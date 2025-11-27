@@ -1,6 +1,7 @@
 // C++ Implementation of the rANS encoder
 #include <cstdint>
 #include <vector>
+#include "rANS.hh"
 
 struct Frequencies {
     int total_freq() const { return 0; };
@@ -35,7 +36,7 @@ struct rANSParams {
 
     rANSParams(const Frequencies &freqs_) : freqs(freqs_){
         
-        M = freqs.total_freq();
+        M = freqs.total_freq(); // M = sum of frequencies
         L = RANGE_FACTOR * M;
         H = L * (1u << NUM_BITS_OUT) - 1u;
 
@@ -55,3 +56,9 @@ struct rANSParams {
     }
 
 };
+
+encoder::encoder(rANSParams params) :
+    params(params)
+    {};
+
+
