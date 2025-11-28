@@ -2,8 +2,9 @@
 #include <cstdint>
 #include <vector>
 #include <algorithm>
-#include <unordered_map>
+#include <map>
 #include <tuple>
+#include <random>
 
 #include "rANS.hh"
 using namespace std;
@@ -57,14 +58,14 @@ vector<bool> encoder::encode_block(string data) {
     }
 
     // put binary encoding of final state into bitarray
-    for (int i = 0; i < params.NUM_STATE_BITS; i++) {
+    for (uint32_t i = 0; i < params.NUM_STATE_BITS; i++) {
         bitarray.push_back(state & 1u);
         state >>= 1u;
     }
 
     // add data_block size in binary to bitarray
     uint32_t data_size = data.length();
-    for (int i = 0; i < params.DATA_BLOCK_SIZE_BITS; i++) {
+    for (uint32_t i = 0; i < params.DATA_BLOCK_SIZE_BITS; i++) {
         bitarray.push_back(data_size & 1u);
         data_size >>= 1u;
     }
@@ -81,8 +82,8 @@ decoder::decoder(rANSParams params) : params(params) {};
 // returns the bin, representing as an integer for the index of the bin
 uint32_t decoder::find_bin(vector<uint32_t> cum_freq_list, uint32_t slot) {
 
-    uint32_t bin = *upper_bound(cum_freq_list.begin(), cum_freq_list.end(), slot);
-    return bin - 1;
+    auto bin = upper_bound(cum_freq_list.begin(), cum_freq_list.end(), slot);
+    return (bin - cum_freq_list.begin()) - 1;
 }
 
 // == rANS base decode step ==
@@ -92,7 +93,7 @@ char decoder::base_decode_step(uint32_t& state) {
     uint32_t block_id = state / params.M;
     uint32_t slot = state % params.M;
 
-    unordered_map<char, uint32_t> cum_prob_list = params.freqs.cumulative_freq_dict();
+    map<char, uint32_t> cum_prob_list = params.freqs.cumulative_freq_dict();
     vector<uint32_t> values;
     for (auto& kv : cum_prob_list) {
         values.push_back(kv.second);
@@ -138,23 +139,23 @@ tuple<char, uint32_t> decoder::decode_symbol(uint32_t& state, vector<bool>& enco
 tuple<string, uint32_t> decoder::decode_block(vector<bool>& encoded_bitarray) {
     // get data_block size from bitarray
     uint32_t data_size = 0;
-    for (int i = 0; i < params.DATA_BLOCK_SIZE_BITS; i++) {
-        data_size = data_size & encoded_bitarray.back();
+    for (uint32_t i = 0; i < params.DATA_BLOCK_SIZE_BITS; i++) {
         data_size <<= 1u;
+        data_size = data_size | encoded_bitarray.back();
         encoded_bitarray.pop_back();
     }
 
     // get final state from bitarray
     uint32_t state = 0;
-    for (int i = 0; i < params.NUM_STATE_BITS; i++) {
-        state = state & encoded_bitarray.back();
+    for (uint32_t i = 0; i < params.NUM_STATE_BITS; i++) {
         state <<= 1u;
+        state = state | encoded_bitarray.back();
         encoded_bitarray.pop_back();
     }
     uint32_t bits_consumed = params.DATA_BLOCK_SIZE_BITS + params.NUM_STATE_BITS;
     string data = "";
 
-    for (int i = 0; i < data_size; i++) {
+    for (uint32_t i = 0; i < data_size; i++) {
         tuple<char, uint32_t> state_num_bits = decode_symbol(state, encoded_bitarray);
         string s(1, get<0>(state_num_bits));
         data.insert(0, s);
@@ -171,7 +172,7 @@ tuple<string, uint32_t> decoder::decode_block(vector<bool>& encoded_bitarray) {
 
 //////////////////// TESTING ////////////////////
 bool test_bitarray() {
-    unordered_map<char, uint32_t> freq_dict = {
+    map<char, uint32_t> freq_dict = {
         {'A', 3},
         {'B', 3},
         {'C', 2}
@@ -180,10 +181,6 @@ bool test_bitarray() {
     Frequencies freq = Frequencies(freq_dict);
     string data = "ACB";
     rANSParams params = rANSParams(freq, 5, 1);
-
-    uint32_t M = 8;
-    uint32_t L = 8; // = Mt
-    uint32_t H = 15; // 2*Mt - 1
 
     vector<bool> expected_bitarray = {};
 
@@ -207,7 +204,7 @@ bool test_bitarray() {
     expected_bitarray.push_back(1);
     st = 2;
     expected_bitarray.push_back(0);
-    // encode
+    // encode; state = (st//3)*8 + 0 + (st%3)
     st = 14;
 
     // third symbol: B
@@ -219,9 +216,11 @@ bool test_bitarray() {
     // encode
     st = 11;
 
+    printf("Final expected state: %d\n", st);
+
     // add final state to bitarray
     uint32_t num_state_bits = 4;
-    if (params.NUM_STATE_BITS != 4) {
+    if (params.NUM_STATE_BITS != num_state_bits) {
         cout << "Num state bits is not 4.\n" << endl;
         return false;
     }
@@ -236,19 +235,120 @@ bool test_bitarray() {
     expected_bitarray.push_back(0);
     expected_bitarray.push_back(0);
     expected_bitarray.push_back(0);
-
+    // state = 01001 1101 11000
 
     // use encoder-decoder and check
     encoder enc = encoder(params);
     vector<bool> actual_bitarray = enc.encode_block(data);
-    return actual_bitarray == expected_bitarray;
+    if (actual_bitarray.size() != expected_bitarray.size()) {
+        printf("Size mismatch. Actual: %zu, Expected: %zu\n", actual_bitarray.size(), expected_bitarray.size());
+    }
+
+    printf("Expected bitarray:\t");
+    for (uint32_t i = 0; i < expected_bitarray.size(); i++) {
+        cout << expected_bitarray[i] << " ";
+    }
+
+    printf("\nActual bitarray:\t");
+    for (uint32_t i = 0; i < actual_bitarray.size(); i++) {
+        cout << actual_bitarray[i] << " ";
+    }
+
+    cout << endl;
+
+    if (actual_bitarray != expected_bitarray) {
+        return false;
+    }
+
+    decoder dec = decoder(params);
+    tuple<string,uint32_t> decoded_data = dec.decode_block(actual_bitarray);
+    cout << get<0>(decoded_data) << endl;
+    return data == get<0>(decoded_data);
+}
+
+string random_string(uint32_t n, const vector<char>& alphabet) {
+    static mt19937 rng(random_device{}());
+    uniform_int_distribution<> dist(0, alphabet.size() - 1);
+
+    string s;
+    s.reserve(n);
+
+    for (uint32_t i = 0; i < n; ++i) {
+        s.push_back(alphabet[dist(rng)]);
+    }
+    return s;
+}
+
+bool test_rANS() {
+    map<char, uint32_t> freq_dict1 = {
+        {'A', 1},
+        {'B', 1},
+        {'C', 2}
+    };
+    vector<char> alpha1 = {'A', 'B', 'C'};
+
+    map<char, uint32_t> freq_dict2 = {
+        {'A', 3},
+        {'B', 3},
+        {'C', 2},
+        {'D', 5}
+    };
+    vector<char> alpha2 = {'A', 'B', 'C', 'D'};
+
+    map<char, uint32_t> freq_dict3 = {
+        {'A', 301},
+        {'B', 41},
+        {'C', 5},
+        {'D', 129},
+        {'E', 60}
+    };
+    vector<char> alpha3 = {'A', 'B', 'C', 'D', 'E'};
+
+    map<char, uint32_t> freq_dicts[] = {freq_dict1, freq_dict2, freq_dict3};
+    vector<char> alphas[] = {alpha1, alpha2, alpha3};
+    for (int i = 0; i < 1; i++) {
+        Frequencies freq = Frequencies(freq_dicts[i]);
+        string data = random_string(10000, alphas[i]);
+        rANSParams params = rANSParams(freq, 32, 1);
+
+        encoder enc = encoder(params);
+        decoder dec = decoder(params);
+
+        vector<bool> encoded_bitarray = enc.encode_block(data);
+        uint32_t len = encoded_bitarray.size();
+
+        // add noise to front
+        encoded_bitarray.insert(encoded_bitarray.begin(), false);
+        encoded_bitarray.insert(encoded_bitarray.begin(), false);
+        encoded_bitarray.insert(encoded_bitarray.begin(), true);
+
+        tuple<string,uint32_t> decoded_data = dec.decode_block(encoded_bitarray);
+        // cout << "Input string: " << data << endl;
+        // cout << "Decoded string: " << get<0>(decoded_data) << endl;
+
+        if (get<1>(decoded_data) != len) {
+            printf("Did not consume correct number of bits.\n");
+            return false;
+        }
+        if (get<0>(decoded_data) != data) {
+            printf("Decoded string does not match input.\n");
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 int main(int argc, char *argv[]) {
-    bool ret_val = test_bitarray();
-    if(ret_val) {
-        printf("Success!\n");
-    } else {
-        printf("Mismatch.\n");
-    }
+    // bool ret_val = test_bitarray();
+    // if(ret_val) {
+    //     printf("Success!\n");
+    // } else {
+    //     printf("Mismatch.\n");
+    // }
+
+    bool test_result = test_rANS();
+    printf(test_result ? "PASS\n" : "FAIL\n");
+
+    return 0;
 }

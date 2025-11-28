@@ -2,12 +2,13 @@
 #include <iostream>
 #include <tuple>
 #include <vector>
+#include <map>
 using namespace std;
 
 struct Frequencies {
-    Frequencies(unordered_map<char, uint32_t> freq_dict_) : freq_dict(freq_dict_) {};
+    Frequencies(map<char, uint32_t> freq_dict_) : freq_dict(freq_dict_) {};
 
-    unordered_map<char, uint32_t> freq_dict;
+    map<char, uint32_t> freq_dict;
 
     uint32_t total_freq() const { 
         uint32_t sum = 0;
@@ -21,8 +22,8 @@ struct Frequencies {
 
     uint32_t frequency(char s) const { return freq_dict.at(s); }
 
-    unordered_map<char, uint32_t> cumulative_freq_dict() const {
-        unordered_map<char, uint32_t> cum_freq_dict;
+    map<char, uint32_t> cumulative_freq_dict() const {
+        map<char, uint32_t> cum_freq_dict;
         uint32_t sum = 0;
         for (const auto& kv : freq_dict) {
             cum_freq_dict[kv.first] = sum;
@@ -57,8 +58,8 @@ struct rANSParams {
     // alphabet size
     uint32_t K;
 
-    vector<uint32_t> min_shrunk_state;
-    vector<uint32_t> max_shrunk_state;
+    map<char, uint32_t> min_shrunk_state;
+    map<char, uint32_t> max_shrunk_state;
 
     uint32_t INITIAL_STATE;
     uint32_t NUM_STATE_BITS;
@@ -72,13 +73,13 @@ struct rANSParams {
         H = L * (1u << NUM_BITS_OUT) - 1u;
 
         K = freqs.size();
-        min_shrunk_state.resize(K);
-        max_shrunk_state.resize(K);
 
-        for (size_t i = 0; i < K; ++i) {
-            uint32_t f = freqs.frequency(i);
-            min_shrunk_state[i] = RANGE_FACTOR * f;
-            max_shrunk_state[i] = RANGE_FACTOR * f * (1u << NUM_BITS_OUT) - 1u;
+        uint32_t i = 0;
+        for (const auto& kv : freqs.freq_dict) {
+            uint32_t f = kv.second;
+            min_shrunk_state[kv.first] = RANGE_FACTOR * f;
+            max_shrunk_state[kv.first] = RANGE_FACTOR * f * (1u << NUM_BITS_OUT) - 1u;
+            i++;
         }
 
         INITIAL_STATE = L;
