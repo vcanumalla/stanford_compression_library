@@ -132,7 +132,7 @@ tuple<char, uint32_t> decoder::decode_symbol(uint32_t& state, vector<bool>& enco
     return tuple<char, uint32_t>{s, num_bits_consumed};
 }
 
-// rANS decode block
+// == rANS decode block ==
 // takes bitarray (fully encoded stream from the encoder), extracts data block size and final state, then proceeds through and decodes original string
 // return original string and number of bits used
 tuple<string, uint32_t> decoder::decode_block(vector<bool>& encoded_bitarray) {
@@ -168,6 +168,87 @@ tuple<string, uint32_t> decoder::decode_block(vector<bool>& encoded_bitarray) {
     return tuple<string, uint32_t>{data, bits_consumed};
 }
 
+
+//////////////////// TESTING ////////////////////
+bool test_bitarray() {
+    unordered_map<char, uint32_t> freq_dict = {
+        {'A', 3},
+        {'B', 3},
+        {'C', 2}
+    };
+    
+    Frequencies freq = Frequencies(freq_dict);
+    string data = "ACB";
+    rANSParams params = rANSParams(freq, 5, 1);
+
+    uint32_t M = 8;
+    uint32_t L = 8; // = Mt
+    uint32_t H = 15; // 2*Mt - 1
+
+    vector<bool> expected_bitarray = {};
+
+    // initial state
+    uint32_t st = 8; // state variable
+    if (params.INITIAL_STATE != 8) {
+        cout << "Initial state is not 8.\n" << endl;
+        return false;
+    }
+
+    // first symbol: A
+    // rescale state to be within [3,5]
+    st = 4;
+    expected_bitarray.push_back(0);
+    // encode
+    st = 9;
+
+    // second symbol: C
+    // rescale
+    st = 4;
+    expected_bitarray.push_back(1);
+    st = 2;
+    expected_bitarray.push_back(0);
+    // encode
+    st = 14;
+
+    // third symbol: B
+    // rescale
+    st = 7;
+    expected_bitarray.push_back(0);
+    st = 3;
+    expected_bitarray.push_back(1);
+    // encode
+    st = 11;
+
+    // add final state to bitarray
+    uint32_t num_state_bits = 4;
+    if (params.NUM_STATE_BITS != 4) {
+        cout << "Num state bits is not 4.\n" << endl;
+        return false;
+    }
+    expected_bitarray.push_back(1);
+    expected_bitarray.push_back(1);
+    expected_bitarray.push_back(0);
+    expected_bitarray.push_back(1);
+
+    // add number of symbols (3) to bitarray
+    expected_bitarray.push_back(1);
+    expected_bitarray.push_back(1);
+    expected_bitarray.push_back(0);
+    expected_bitarray.push_back(0);
+    expected_bitarray.push_back(0);
+
+
+    // use encoder-decoder and check
+    encoder enc = encoder(params);
+    vector<bool> actual_bitarray = enc.encode_block(data);
+    return actual_bitarray == expected_bitarray;
+}
+
 int main(int argc, char *argv[]) {
-    return 0;
+    bool ret_val = test_bitarray();
+    if(ret_val) {
+        printf("Success!\n");
+    } else {
+        printf("Mismatch.\n");
+    }
 }

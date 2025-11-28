@@ -5,6 +5,8 @@
 using namespace std;
 
 struct Frequencies {
+    Frequencies(unordered_map<char, uint32_t> freq_dict_) : freq_dict(freq_dict_) {};
+
     unordered_map<char, uint32_t> freq_dict;
 
     uint32_t total_freq() const { 
@@ -62,7 +64,8 @@ struct rANSParams {
     uint32_t NUM_STATE_BITS;
     uint32_t BITS_OUT_MASK;
 
-    rANSParams(const Frequencies &freqs_) : freqs(freqs_){
+    rANSParams(const Frequencies &freqs_, uint32_t DATA_BLOCK_SIZE_BITS_, uint32_t RANGE_FACTOR_) : 
+        freqs(freqs_), DATA_BLOCK_SIZE_BITS(DATA_BLOCK_SIZE_BITS_), RANGE_FACTOR(RANGE_FACTOR_) {
         
         M = freqs.total_freq(); // M = sum of frequencies
         L = RANGE_FACTOR * M;
