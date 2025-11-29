@@ -23,50 +23,44 @@ uint32_t encoder::base_encode_step(char s, uint32_t state) {
 
 // == rANS shrink state ==
 // takes current state, next symbol to be encoded, brings state within [L,H] range if needed
-// returns the scaled state (modifying via reference), and the bits outputted to stream in the process of scaling
-vector<bool> encoder::shrink_state(uint32_t& state, char next_symbol) {
-    vector<bool> out_bits;
-
+// returns the scaled state and the bits outputted to stream in the process of scaling, through reference
+void encoder::shrink_state(uint32_t& state, char next_symbol, bitstream& bitarray) {
     while (state > params.max_shrunk_state[next_symbol]) {
         bool new_bit = state % (1u << params.NUM_BITS_OUT);
-        out_bits.push_back(new_bit); // using vector as a stack, appending bits to end during encode, then popping from end->start during decode (reverse direction)
+        bitarray.push(new_bit); // using vector as a stack, appending bits to end during encode, then popping from end->start during decode (reverse direction)
         state = state >> params.NUM_BITS_OUT;
     }
-
-    return out_bits;
 }
 
 // == rANS encode symbol ==
 // takes current state, next_symbol to be encoded, calculates next state using base_encode_step and shrink_state
-// returns next state (modifying via reference), and bits outputted from shrink state
-vector<bool> encoder::encode_symbol(uint32_t& state, char s) {
-    vector<bool> out_bits = shrink_state(state, s);
+// returns next state and bits outputted from shrink state, through reference
+void encoder::encode_symbol(uint32_t& state, char s, bitstream& bitarray) {
+    shrink_state(state, s, bitarray);
     state = base_encode_step(s, state);
-    return out_bits;
 }
 
 // == rANS encode block ==
 // takes a large portion (block) of data and encodes it together, using encode_symbol as the building block step
 // returns the bitarray (vector of bools) corresponding to this data, to be decoded
-vector<bool> encoder::encode_block(string data) {
-    vector<bool> bitarray;
+bitstream encoder::encode_block(string data) {
+    bitstream bitarray;
     uint32_t state = params.INITIAL_STATE;
 
     for (char s : data) {
-        vector<bool> out_bits = encode_symbol(state, s);
-        bitarray.insert(bitarray.end(), out_bits.begin(), out_bits.end());
+        encode_symbol(state, s, bitarray);
     }
 
     // put binary encoding of final state into bitarray
     for (uint32_t i = 0; i < params.NUM_STATE_BITS; i++) {
-        bitarray.push_back(state & 1u);
+        bitarray.push(state & 1u);
         state >>= 1u;
     }
 
     // add data_block size in binary to bitarray
     uint32_t data_size = data.length();
     for (uint32_t i = 0; i < params.DATA_BLOCK_SIZE_BITS; i++) {
-        bitarray.push_back(data_size & 1u);
+        bitarray.push(data_size & 1u);
         data_size >>= 1u;
     }
 
@@ -110,11 +104,10 @@ char decoder::base_decode_step(uint32_t& state) {
 // == rANS expand state ==
 // takes current state and available bits from bitarray, expands state to range [L,H]
 // returns number of bits consumed from bitarray to scale, and new state (modifies by reference)
-uint32_t decoder::expand_state(uint32_t& state, vector<bool>& encoded_bitarray) {
+uint32_t decoder::expand_state(uint32_t& state, bitstream& encoded_bitarray) {
     uint32_t num_bits = 0;
     while (state < params.L) {
-        bool state_remainder = encoded_bitarray.back();
-        encoded_bitarray.pop_back();
+        bool state_remainder = encoded_bitarray.pop();
 
         num_bits += params.NUM_BITS_OUT;
         state = (state << params.NUM_BITS_OUT) + (state_remainder ? 1u : 0);
@@ -126,7 +119,7 @@ uint32_t decoder::expand_state(uint32_t& state, vector<bool>& encoded_bitarray) 
 // == rANS decode symbol ==
 // takes current state and bitarray, decodes one symbol and ensures range checking of updated state
 // returns tuple containing decoded symbol and num bits used to expand (scale) the state; also modifies state by reference
-tuple<char, uint32_t> decoder::decode_symbol(uint32_t& state, vector<bool>& encoded_bitarray) {
+tuple<char, uint32_t> decoder::decode_symbol(uint32_t& state, bitstream& encoded_bitarray) {
     char s = base_decode_step(state);
 
     uint32_t num_bits_consumed = expand_state(state, encoded_bitarray);
@@ -136,21 +129,20 @@ tuple<char, uint32_t> decoder::decode_symbol(uint32_t& state, vector<bool>& enco
 // == rANS decode block ==
 // takes bitarray (fully encoded stream from the encoder), extracts data block size and final state, then proceeds through and decodes original string
 // return original string and number of bits used
-tuple<string, uint32_t> decoder::decode_block(vector<bool>& encoded_bitarray) {
+tuple<string, uint32_t> decoder::decode_block(bitstream& encoded_bitarray) {
     // get data_block size from bitarray
     uint32_t data_size = 0;
     for (uint32_t i = 0; i < params.DATA_BLOCK_SIZE_BITS; i++) {
         data_size <<= 1u;
-        data_size = data_size | encoded_bitarray.back();
-        encoded_bitarray.pop_back();
+        data_size |= encoded_bitarray.pop();
     }
 
     // get final state from bitarray
     uint32_t state = 0;
     for (uint32_t i = 0; i < params.NUM_STATE_BITS; i++) {
         state <<= 1u;
-        state = state | encoded_bitarray.back();
-        encoded_bitarray.pop_back();
+        uint8_t next = encoded_bitarray.pop() ? 1u : 0;
+        state |= next;
     }
     uint32_t bits_consumed = params.DATA_BLOCK_SIZE_BITS + params.NUM_STATE_BITS;
     string data = "";
@@ -182,7 +174,7 @@ bool test_bitarray() {
     string data = "ACB";
     rANSParams params = rANSParams(freq, 5, 1);
 
-    vector<bool> expected_bitarray = {};
+    bitstream expected_bitarray = {};
 
     // initial state
     uint32_t st = 8; // state variable
@@ -194,25 +186,25 @@ bool test_bitarray() {
     // first symbol: A
     // rescale state to be within [3,5]
     st = 4;
-    expected_bitarray.push_back(0);
+    expected_bitarray.push(0);
     // encode
     st = 9;
 
     // second symbol: C
     // rescale
     st = 4;
-    expected_bitarray.push_back(1);
+    expected_bitarray.push(1);
     st = 2;
-    expected_bitarray.push_back(0);
+    expected_bitarray.push(0);
     // encode; state = (st//3)*8 + 0 + (st%3)
     st = 14;
 
     // third symbol: B
     // rescale
     st = 7;
-    expected_bitarray.push_back(0);
+    expected_bitarray.push(0);
     st = 3;
-    expected_bitarray.push_back(1);
+    expected_bitarray.push(1);
     // encode
     st = 11;
 
@@ -224,39 +216,32 @@ bool test_bitarray() {
         cout << "Num state bits is not 4.\n" << endl;
         return false;
     }
-    expected_bitarray.push_back(1);
-    expected_bitarray.push_back(1);
-    expected_bitarray.push_back(0);
-    expected_bitarray.push_back(1);
+    expected_bitarray.push(1);
+    expected_bitarray.push(1);
+    expected_bitarray.push(0);
+    expected_bitarray.push(1);
 
     // add number of symbols (3) to bitarray
-    expected_bitarray.push_back(1);
-    expected_bitarray.push_back(1);
-    expected_bitarray.push_back(0);
-    expected_bitarray.push_back(0);
-    expected_bitarray.push_back(0);
+    expected_bitarray.push(1);
+    expected_bitarray.push(1);
+    expected_bitarray.push(0);
+    expected_bitarray.push(0);
+    expected_bitarray.push(0);
     // state = 01001 1101 11000
 
     // use encoder-decoder and check
     encoder enc = encoder(params);
-    vector<bool> actual_bitarray = enc.encode_block(data);
+    bitstream actual_bitarray = enc.encode_block(data);
     if (actual_bitarray.size() != expected_bitarray.size()) {
         printf("Size mismatch. Actual: %zu, Expected: %zu\n", actual_bitarray.size(), expected_bitarray.size());
     }
 
-    printf("Expected bitarray:\t");
-    for (uint32_t i = 0; i < expected_bitarray.size(); i++) {
-        cout << expected_bitarray[i] << " ";
-    }
-
-    printf("\nActual bitarray:\t");
-    for (uint32_t i = 0; i < actual_bitarray.size(); i++) {
-        cout << actual_bitarray[i] << " ";
-    }
-
-    cout << endl;
-
-    if (actual_bitarray != expected_bitarray) {
+    cout << "actual: ";
+    actual_bitarray.print();
+    cout << "expected : ";
+    expected_bitarray.print();
+    
+    if (!actual_bitarray.equals(expected_bitarray)) {
         return false;
     }
 
@@ -306,7 +291,7 @@ bool test_rANS() {
 
     map<char, uint32_t> freq_dicts[] = {freq_dict1, freq_dict2, freq_dict3};
     vector<char> alphas[] = {alpha1, alpha2, alpha3};
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 3; i++) {
         Frequencies freq = Frequencies(freq_dicts[i]);
         string data = random_string(10000, alphas[i]);
         rANSParams params = rANSParams(freq, 32, 1);
@@ -314,13 +299,8 @@ bool test_rANS() {
         encoder enc = encoder(params);
         decoder dec = decoder(params);
 
-        vector<bool> encoded_bitarray = enc.encode_block(data);
+        bitstream encoded_bitarray = enc.encode_block(data);
         uint32_t len = encoded_bitarray.size();
-
-        // add noise to front
-        encoded_bitarray.insert(encoded_bitarray.begin(), false);
-        encoded_bitarray.insert(encoded_bitarray.begin(), false);
-        encoded_bitarray.insert(encoded_bitarray.begin(), true);
 
         tuple<string,uint32_t> decoded_data = dec.decode_block(encoded_bitarray);
         // cout << "Input string: " << data << endl;
@@ -348,7 +328,7 @@ int main(int argc, char *argv[]) {
     // }
 
     bool test_result = test_rANS();
-    printf(test_result ? "PASS\n" : "FAIL\n");
+    printf(test_result ? "TEST PASS\n" : "FAIL\n");
 
     return 0;
 }
