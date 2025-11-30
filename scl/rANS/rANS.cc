@@ -233,7 +233,7 @@ bool test_bitarray() {
     encoder enc = encoder(params);
     bitstream actual_bitarray = enc.encode_block(data);
     if (actual_bitarray.size() != expected_bitarray.size()) {
-        printf("Size mismatch. Actual: %zu, Expected: %zu\n", actual_bitarray.size(), expected_bitarray.size());
+        printf("Size mismatch. Actual: %llu, Expected: %llu\n", actual_bitarray.size(), expected_bitarray.size());
     }
 
     cout << "actual: ";
