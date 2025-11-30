@@ -90,7 +90,70 @@ struct rANSParams {
     }
 
 };
+class BitArray {
+    private:
+        vector<bool> bits;
 
+    public:
+        // Default constructor - creates empty bitarray
+        BitArray() : bits() {}
+
+        // Constructor from vector of bools
+        BitArray(const vector<bool>& bits_) : bits(bits_) {}
+
+        // Constructor from uint32_t with optional bit_width
+        BitArray(uint32_t x, uint32_t bit_width = 0) {
+            if (bit_width == 0) {
+                // Calculate minimum bit width needed
+                if (x == 0) {
+                    bit_width = 1;
+                } else {
+                    bit_width = 32u - __builtin_clz(x);
+                }
+            }
+            bits.resize(bit_width);
+            for (uint32_t i = 0; i < bit_width; i++) {
+                bits[i] = (x >> i) & 1u;
+            }
+        }
+
+        // Get the number of bits
+        size_t size() const {
+            return bits.size();
+        }
+
+        // Access individual bits
+        bool operator[](size_t index) const {
+            return bits[index];
+        }
+
+        // Get bit width needed to represent a uint32_t
+        static uint32_t get_bit_width(uint32_t x) {
+            if (x == 0) return 1;
+            return 32u - __builtin_clz(x);
+        }
+
+        // Convert uint32_t to BitArray (static method)
+        static BitArray uint_to_bitarray(uint32_t x, uint32_t bit_width = 0) {
+            return BitArray(x, bit_width);
+        }
+
+        // Convert BitArray to uint32_t
+        static uint32_t bitarray_to_uint(const BitArray& bitarray) {
+            uint32_t result = 0;
+            for (size_t i = 0; i < bitarray.bits.size(); i++) {
+                if (bitarray.bits[i]) {
+                    result |= (1u << i);
+                }
+            }
+            return result;
+        }
+
+        // Instance method version of bitarray_to_uint
+        uint32_t to_uint() const {
+            return bitarray_to_uint(*this);
+        }
+};
 // note: using custom class to encode bitarrays, operations done on bitarrays will use bitwise operations
 class bitstream {
     private:
