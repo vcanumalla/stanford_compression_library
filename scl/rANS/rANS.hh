@@ -118,4 +118,5 @@ class decoder {
     public:
         decoder(rANSParams rans_params);
         tuple<string, uint32_t> decode_block(BitArray& encoded_bitarray);
+        tuple<string, uint32_t> decode_block_interleave2(BitArray& encoded_bitarray);
 };

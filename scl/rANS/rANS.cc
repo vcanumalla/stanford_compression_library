@@ -78,25 +78,24 @@ void encoder::encode_block(char** buf, size_t len, BitArray& out_stream) {
 // end of bitstream contains state0, state1, block_size in that order
 // IMPORTANT: data length must be <= BUFFER_SIZE, otherwise behavior is undefined
 void encoder::encode_block_interleave2(char** buf, size_t len, BitArray& out_stream) {
-    uint32_t state0 = params.INITIAL_STATE;
-    uint32_t state1 = params.INITIAL_STATE;
+    uint32_t state[2] = {params.INITIAL_STATE, params.INITIAL_STATE};
     char* ptr = *buf;
 
     // read symbols from buf in forward order, encode into bitstream
     if (len & 1u) { // odd num symbols, put extra into state1
-        encode_symbol(state1, &ptr, out_stream);
+        encode_symbol(state[1], &ptr, out_stream);
     }
     for (size_t i = 0; i < len; i += 2) { // alternate putting sym into state0, state1
-        encode_symbol(state0, &ptr, out_stream);
-        encode_symbol(state1, &ptr, out_stream);
+        encode_symbol(state[0], &ptr, out_stream);
+        encode_symbol(state[1], &ptr, out_stream);
     }
 
     // put binary encoding of final states into bitarray; interleave
     for (uint32_t i = 0; i < params.NUM_STATE_BITS; i++) {
-        out_stream.push(state0 & 1u);
-        state0 >>= 1u;
-        out_stream.push(state1 & 1u);
-        state1 >>= 1u;
+        out_stream.push(state[0] & 1u);
+        state[0] >>= 1u;
+        out_stream.push(state[1] & 1u);
+        state[1] >>= 1u;
     }
 
     // add data_block size in binary to bitarray
@@ -184,7 +183,7 @@ tuple<char, uint32_t> decoder::decode_symbol(uint32_t& state, BitArray& encoded_
     return tuple<char, uint32_t>{s, num_bits_consumed};
 }
 
-// == rANS decode block ==
+// == rANS decode block (standard) ==
 // takes bitarray (fully encoded stream from the encoder), extracts data block size and final state, then proceeds through and decodes original string
 // return original string and number of bits used
 // ** assumes encoded_bitarray is processed by an encoder which does reverse encoding, so that decoding can proceed in forward direction
@@ -214,6 +213,49 @@ tuple<string, uint32_t> decoder::decode_block(BitArray& encoded_bitarray) {
     }
 
     if (state != params.INITIAL_STATE) {
+        cout << "FINAL STATE DOES NOT MATCH INITIAL STATE\n" << endl;
+    }
+
+    return tuple<string, uint32_t>{data, bits_consumed};
+}
+
+// == rANS decode block (explicit interleaving by factor of 2) ==
+// takes bitarray (fully encoded stream from the encoder), extracts data block size and final state, then proceeds through and decodes original string
+// return original string and number of bits used
+// ** assumes encoded_bitarray is processed by an encoder which does reverse encoding, so that decoding can proceed in forward direction
+tuple<string, uint32_t> decoder::decode_block_interleave2(BitArray& encoded_bitarray) {
+    // get data_block size from bitarray
+    uint32_t data_size = 0;
+    for (uint32_t i = 0; i < params.DATA_BLOCK_SIZE_BITS; i++) {
+        data_size <<= 1u;
+        data_size |= encoded_bitarray.pop();
+    }
+
+    // get final states from bitarray
+    uint32_t state[2] = {0, 0};
+    for (uint32_t i = 0; i < params.NUM_STATE_BITS; i++) {
+        state[1] <<= 1u;
+        state[1] |= encoded_bitarray.pop() ? 1u : 0;
+        state[0] <<= 1u;
+        state[0] |= encoded_bitarray.pop() ? 1u : 0;
+    }
+
+    uint32_t bits_consumed = params.DATA_BLOCK_SIZE_BITS + params.NUM_STATE_BITS;
+    string data = "";
+
+    for (uint32_t i = 0; i < data_size; i++) {
+        tuple<char, uint32_t> state1_num_bits = decode_symbol(state[1], encoded_bitarray);
+        string s1(1, get<0>(state1_num_bits));
+        data.append(s1);
+        bits_consumed += get<1>(state1_num_bits);
+
+        tuple<char, uint32_t> state0_num_bits = decode_symbol(state[0], encoded_bitarray);
+        string s0(1, get<0>(state0_num_bits));
+        data.append(s0);
+        bits_consumed += get<1>(state0_num_bits);
+    }
+
+    if (state[0] != params.INITIAL_STATE || state[1] != params.INITIAL_STATE) {
         cout << "FINAL STATE DOES NOT MATCH INITIAL STATE\n" << endl;
     }
 

@@ -1,6 +1,5 @@
 C++ = g++
-# CFLAGS = -g3 -std=c++17 -Wall $$warnflags -fcf-protection=none -fno-pic -no-pie -O2
-CFLAGS = -std=c++17 -Wall -g
+CFLAGS = -Wall -g -O3 -march=native
 export warnflags = -Wfloat-equal -Wtype-limits -Wpointer-arith -Wlogical-op -Wshadow -Winit-self -fno-diagnostics-show-option
 LDFLAGS =
 LDLIBS =
