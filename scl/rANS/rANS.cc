@@ -551,6 +551,13 @@ int main(int argc, char *argv[]) {
     printf("Input size:  %zu bytes\n", input_size);
     printf("Output size: %zu bytes\n", output_size);
     printf("Compression ratio: %.2fx\n", compression_ratio);
+
+    // printf("Decompressing %s -> %s...\n", output_file_path.c_str(), output_file_path.c_str());
+    auto dec_start = chrono::high_resolution_clock::now();
+    tuple<string, uint32_t> decoded_data = dec.decode_block(encoded_bitarray);
+    auto dec_stop = chrono::high_resolution_clock::now();
+    auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
+    printf("Decompression time: %.2f seconds\n", dec_time.count() / 1000.0);
     
     return 0;
 }
