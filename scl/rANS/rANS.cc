@@ -47,38 +47,49 @@ void encoder::encode_symbol(uint32_t& state, char s, BitArray& bitarray) {
 // takes a large portion (block) of data and encodes it together, using encode_symbol as the building block step
 // returns the bitarray (vector of bools) corresponding to this data, to be decoded
 // IMPORTANT: data length must be <= BUFFER_SIZE, otherwise behavior is undefined
-BitArray encoder::encode_block(string data) {
-    uint32_t block_size = data.size();
+void encoder::encode_block(string data, BitArray& out_stream) {
+    size_t block_size = data.size();
     char buf[BUFFER_SIZE];
 
-    BitArray bitarray;
     uint32_t state = params.INITIAL_STATE;
 
     // read symbols into buf
-    for (uint32_t i = 0; i < block_size; i++) {
+    for (size_t i = 0; i < block_size; i++) {
         buf[block_size - 1 - i] = data[i]; // fill buffer in reverse order, with chars in forward order
     }
 
     // read symbols from buf in forward order, encode into bitstream
-    for (uint32_t i = 0; i < block_size; i++) {
+    for (size_t i = 0; i < block_size; i++) {
         char s = buf[i];
-        encode_symbol(state, s, bitarray);
+        encode_symbol(state, s, out_stream);
     }
 
     // put binary encoding of final state into bitarray
     for (uint32_t i = 0; i < params.NUM_STATE_BITS; i++) {
-        bitarray.push(state & 1u);
+        out_stream.push(state & 1u);
         state >>= 1u;
     }
 
     // add data_block size in binary to bitarray
     uint32_t data_size = data.length();
     for (uint32_t i = 0; i < params.DATA_BLOCK_SIZE_BITS; i++) {
-        bitarray.push(data_size & 1u);
+        out_stream.push(data_size & 1u);
         data_size >>= 1u;
     }
+}
 
-    return bitarray;
+// NOTE: can be replaced by a function which streams in data from a file
+BitArray encoder::encode(string data) {
+    BitArray bitstream;
+    for (size_t i = 0; i < data.size(); i += BUFFER_SIZE) {
+        // Compute the real length of the chunk (last chunk may be shorter)
+        size_t len = min((unsigned long)BUFFER_SIZE, data.size() - i);
+
+        // Pass the substring to your subfunction
+        encode_block(data.substr(i, len), bitstream);
+    }
+
+    return bitstream;
 }
 
 
@@ -247,7 +258,7 @@ bool test_bitarray() { // DEPRECATED: encoded_bitarray does not match python imp
 
     // use encoder-decoder and check
     encoder enc = encoder(params);
-    BitArray actual_bitarray = enc.encode_block(data);
+    BitArray actual_bitarray = enc.encode(data);
     if (actual_bitarray.size() != expected_bitarray.size()) {
         printf("Size mismatch. Actual: %zu, Expected: %zu\n", actual_bitarray.size(), expected_bitarray.size());
     }
@@ -317,7 +328,7 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
         decoder dec = decoder(params);
 
         auto enc_start = chrono::high_resolution_clock::now();
-        BitArray encoded_bitarray = enc.encode_block(data);
+        BitArray encoded_bitarray = enc.encode(data);
         auto enc_stop = chrono::high_resolution_clock::now();
         uint32_t len = encoded_bitarray.size();
 
@@ -352,13 +363,6 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
 }
 
 int main(int argc, char *argv[]) {
-    // bool ret_val = test_bitarray();
-    // if(ret_val) {
-    //     printf("Success!\n");
-    // } else {
-    //     printf("Mismatch.\n");
-    // }
-
     uint32_t enc_avg_time = 0;
     uint32_t dec_avg_time = 0;
 
