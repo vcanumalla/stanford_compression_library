@@ -78,12 +78,10 @@ struct rANSParams {
 
         K = freqs.size();
 
-        uint32_t i = 0;
         for (const auto& kv : freqs.freq_dict) {
             uint32_t f = kv.second;
             min_shrunk_state[kv.first] = RANGE_FACTOR * f;
             max_shrunk_state[kv.first] = RANGE_FACTOR * f * (1u << NUM_BITS_OUT) - 1u;
-            i++;
         }
 
         INITIAL_STATE = L;

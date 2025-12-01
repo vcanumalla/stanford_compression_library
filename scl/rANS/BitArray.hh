@@ -13,7 +13,7 @@ using namespace std;
 class BitArray {
     private:
         vector<uint8_t> data;
-        uint8_t bit_ptr;
+        int8_t bit_ptr;
         uint64_t nelem;
 
     public:

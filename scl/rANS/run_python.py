@@ -43,6 +43,10 @@ def main():
     # IMPORTANT: Sort freq keys lexicographically in the dict. This mirrors the
     # std::map ordering on the C++ side and keeps benchmarks deterministic.
     freqs.freq_dict = dict(sorted(freqs.freq_dict.items(), key=lambda item: item[0]))
+    # output list of keys to txt
+    with open("freqs_python.txt", "w") as f:
+        for key in freqs.freq_dict.keys():
+            f.write(key + "\n")
     rans_params = rANSParams(freqs)
 
     encoder = rANSEncoder(rans_params)
