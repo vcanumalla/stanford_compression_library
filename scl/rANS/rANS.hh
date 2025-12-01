@@ -97,12 +97,13 @@ class encoder {
     private:
         rANSParams params;
         uint32_t base_encode_step(char s, uint32_t state);
-        void shrink_state(uint32_t& state, char next_symbol, BitArray& bitarray);
-        void encode_symbol(uint32_t& state, char next_symbol, BitArray& bitarray);
+        void shrink_state(uint32_t& state, char s, BitArray& bitarray);
+        void encode_symbol(uint32_t& state, char** symbol_ptr, BitArray& bitarray);
 
     public:
         encoder(rANSParams rans_params);
         void encode_block(char** buf, size_t len, BitArray& out_stream);
+        void encode_block_interleave2(char** buf, size_t len, BitArray& out_stream);
         BitArray encode(string data);
 };
 

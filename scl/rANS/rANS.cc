@@ -28,8 +28,8 @@ uint32_t encoder::base_encode_step(char s, uint32_t state) {
 // == rANS shrink state ==
 // takes current state, next symbol to be encoded, brings state within [L,H] range if needed
 // returns the scaled state and the bits outputted to stream in the process of scaling, through reference
-void encoder::shrink_state(uint32_t& state, char next_symbol, BitArray& bitarray) {
-    while (state > params.max_shrunk_state[next_symbol]) {
+void encoder::shrink_state(uint32_t& state, char symbol, BitArray& bitarray) {
+    while (state > params.max_shrunk_state[symbol]) {
         bool new_bit = state % (1u << params.NUM_BITS_OUT);
         bitarray.push(new_bit); // using vector as a stack, appending bits to end during encode, then popping from end->start during decode (reverse direction)
         state = state >> params.NUM_BITS_OUT;
@@ -39,9 +39,10 @@ void encoder::shrink_state(uint32_t& state, char next_symbol, BitArray& bitarray
 // == rANS encode symbol ==
 // takes current state, next_symbol to be encoded, calculates next state using base_encode_step and shrink_state
 // returns next state and bits outputted from shrink state, through reference
-void encoder::encode_symbol(uint32_t& state, char s, BitArray& bitarray) {
-    shrink_state(state, s, bitarray);
-    state = base_encode_step(s, state);
+void encoder::encode_symbol(uint32_t& state, char** symbol_ptr, BitArray& bitarray) {
+    shrink_state(state, **symbol_ptr, bitarray);
+    state = base_encode_step(**symbol_ptr, state);
+    *symbol_ptr += 1;
 }
 
 // == rANS encode block (standard) ==
@@ -54,15 +55,48 @@ void encoder::encode_block(char** buf, size_t len, BitArray& out_stream) {
 
     // read symbols from buf in forward order, encode into bitstream
     for (size_t i = 0; i < len; i++) {
-        char s = *ptr;
-        encode_symbol(state, s, out_stream);
-        ptr++; // move ptr to next char (symbol)
+        encode_symbol(state, &ptr, out_stream);
     }
 
     // put binary encoding of final state into bitarray
     for (uint32_t i = 0; i < params.NUM_STATE_BITS; i++) {
         out_stream.push(state & 1u);
         state >>= 1u;
+    }
+
+    // add data_block size in binary to bitarray
+    uint32_t data_size = len;
+    for (uint32_t i = 0; i < params.DATA_BLOCK_SIZE_BITS; i++) {
+        out_stream.push(data_size & 1u);
+        data_size >>= 1u;
+    }
+}
+
+// == rANS encode block (explicitly interleaved with factor of 2) ==
+// takes a block of data of size len and encodes it together, using encode_symbol as the building block step
+// returns the bitarray corresponding to this data, to be decoded
+// end of bitstream contains state0, state1, block_size in that order
+// IMPORTANT: data length must be <= BUFFER_SIZE, otherwise behavior is undefined
+void encoder::encode_block_interleave2(char** buf, size_t len, BitArray& out_stream) {
+    uint32_t state0 = params.INITIAL_STATE;
+    uint32_t state1 = params.INITIAL_STATE;
+    char* ptr = *buf;
+
+    // read symbols from buf in forward order, encode into bitstream
+    if (len & 1u) { // odd num symbols, put extra into state1
+        encode_symbol(state1, &ptr, out_stream);
+    }
+    for (size_t i = 0; i < len; i += 2) { // alternate putting sym into state0, state1
+        encode_symbol(state0, &ptr, out_stream);
+        encode_symbol(state1, &ptr, out_stream);
+    }
+
+    // put binary encoding of final states into bitarray; interleave
+    for (uint32_t i = 0; i < params.NUM_STATE_BITS; i++) {
+        out_stream.push(state0 & 1u);
+        state0 >>= 1u;
+        out_stream.push(state1 & 1u);
+        state1 >>= 1u;
     }
 
     // add data_block size in binary to bitarray
