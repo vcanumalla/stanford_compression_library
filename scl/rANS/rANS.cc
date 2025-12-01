@@ -13,7 +13,7 @@
 using namespace std;
 
 // max block size: 65536
-const uint32_t BUFFER_SIZE = 65536;
+const uint32_t BUFFER_SIZE = 1000000;
 
 encoder::encoder(rANSParams params) : params(params) {};
 
@@ -532,7 +532,7 @@ int main(int argc, char *argv[]) {
     
     printf("Compressing %s -> %s...\n", input_file_path.c_str(), output_file_path.c_str());
     auto enc_start = chrono::high_resolution_clock::now();
-    BitArray encoded_bitarray = enc.encode_block(data);
+    BitArray encoded_bitarray = enc.encode(data);
     auto enc_stop = chrono::high_resolution_clock::now();
     auto enc_time = chrono::duration_cast<chrono::milliseconds>(enc_stop - enc_start);
     printf("Compression time: %.2f seconds\n", enc_time.count() / 1000.0);
