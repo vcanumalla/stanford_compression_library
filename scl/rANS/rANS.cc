@@ -5,6 +5,7 @@
 #include <map>
 #include <tuple>
 #include <random>
+#include <chrono>
 
 #include "rANS.hh"
 using namespace std;
@@ -264,7 +265,7 @@ string random_string(uint32_t n, const vector<char>& alphabet) {
     return s;
 }
 
-bool test_rANS() {
+bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
     map<char, uint32_t> freq_dict1 = {
         {'A', 1},
         {'B', 1},
@@ -299,10 +300,23 @@ bool test_rANS() {
         encoder enc = encoder(params);
         decoder dec = decoder(params);
 
+        auto enc_start = chrono::high_resolution_clock::now();
         bitstream encoded_bitarray = enc.encode_block(data);
+        auto enc_stop = chrono::high_resolution_clock::now();
         uint32_t len = encoded_bitarray.size();
 
+        auto enc_time = chrono::duration_cast<chrono::milliseconds>(enc_stop - enc_start);
+        // cout << "Time to encode: " << enc_time.count() << "ms" << endl;
+        enc_avg_time += enc_time.count();
+
+        auto dec_start = chrono::high_resolution_clock::now();
         tuple<string,uint32_t> decoded_data = dec.decode_block(encoded_bitarray);
+        auto dec_stop = chrono::high_resolution_clock::now();
+        
+        auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
+        // cout << "Time to decode: " << dec_time.count() << "ms" << endl;
+        dec_avg_time += dec_time.count();
+
         // cout << "Input string: " << data << endl;
         // cout << "Decoded string: " << get<0>(decoded_data) << endl;
 
@@ -316,6 +330,8 @@ bool test_rANS() {
         }
     }
     
+    enc_avg_time /= 3;
+    dec_avg_time /= 3;
     return true;
 }
 
@@ -327,8 +343,28 @@ int main(int argc, char *argv[]) {
     //     printf("Mismatch.\n");
     // }
 
-    bool test_result = test_rANS();
-    printf(test_result ? "TEST PASS\n" : "FAIL\n");
+    uint32_t enc_avg_time = 0;
+    uint32_t dec_avg_time = 0;
+
+    uint32_t num_iter = 100;
+    for (uint32_t i = 0; i < num_iter; i++) {
+        uint32_t enc_iter_time = 0;
+        uint32_t dec_iter_time = 0;
+        bool test_result = test_rANS(enc_iter_time, dec_iter_time);
+        if (!test_result) {
+            printf("TEST FAILED. EXITING EARLY...\n");
+            break;
+        } else {
+            enc_avg_time += enc_iter_time;
+            dec_avg_time += dec_iter_time;
+        }
+    }
+
+    enc_avg_time /= num_iter;
+    dec_avg_time /= num_iter;
+
+    cout << "Avg encode time: " << enc_avg_time << "ms" << endl;
+    cout << "Avg decode time: " << dec_avg_time << "ms" << endl;
 
     return 0;
 }
