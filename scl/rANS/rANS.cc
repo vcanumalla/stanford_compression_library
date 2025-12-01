@@ -376,7 +376,7 @@ Frequencies compute_frequencies_from_file(string file_path) {
     
     string line;
     while (getline(file, line)) {
-        // Count all characters in the line, but ignore \r (carriage return)
+        // Count all characters in the line
         for (char c : line) {
             if (c != '\r') {
                 freq_dict[c]++;
@@ -406,12 +406,7 @@ string read_file_to_string(const string& file_path) {
     string content;
     string line;
     while (getline(file, line)) {
-        // Add characters from line, but ignore \r (carriage return)
-        for (char c : line) {
-            if (c != '\r') {
-                content += c;
-            }
-        }
+        content += line;
         content += '\n';
     }
     
@@ -513,14 +508,6 @@ int main(int argc, char *argv[]) {
     Frequencies freqs = compute_frequencies_from_file(input_file_path);
     printf("Found %zu unique characters\n", freqs.size());
     
-    // IMPORTANT: Sort freq keys lexicographically to match Python's sorted dict
-    // This mirrors Python's behavior and keeps benchmarks deterministic
-    map<char, uint32_t> sorted_freq_dict;
-    for (const auto& kv : freqs.freq_dict) {
-        sorted_freq_dict[kv.first] = kv.second;
-    }
-    freqs = Frequencies(sorted_freq_dict);
-    
     // output the list of keys to txt (in sorted order, matching Python)
     ofstream freq_file("freqs_c.txt");
     for (const auto& kv : freqs.freq_dict) {
@@ -534,5 +521,36 @@ int main(int argc, char *argv[]) {
     
     encoder enc = encoder(params);
     decoder dec = decoder(params);
-
+    
+    // Read the entire input file into a string
+    printf("Reading input file...\n");
+    string data = read_file_to_string(input_file_path);
+    if (data.empty()) {
+        printf("Error: Failed to read input file.\n");
+        return 1;
+    }
+    
+    printf("Compressing %s -> %s...\n", input_file_path.c_str(), output_file_path.c_str());
+    auto enc_start = chrono::high_resolution_clock::now();
+    BitArray encoded_bitarray = enc.encode_block(data);
+    auto enc_stop = chrono::high_resolution_clock::now();
+    auto enc_time = chrono::duration_cast<chrono::milliseconds>(enc_stop - enc_start);
+    printf("Compression time: %.2f seconds\n", enc_time.count() / 1000.0);
+    
+    // Write encoded bitarray to file
+    write_bitarray_to_file(encoded_bitarray, output_file_path);
+    
+    // Get file sizes for compression ratio
+    ifstream input_file(input_file_path, ios::binary | ios::ate);
+    ifstream output_file(output_file_path, ios::binary | ios::ate);
+    size_t input_size = input_file.tellg();
+    size_t output_size = output_file.tellg();
+    double compression_ratio = output_size > 0 ? (double)input_size / output_size : 0.0;
+    
+    printf("\nCompression complete!\n");
+    printf("Input size:  %zu bytes\n", input_size);
+    printf("Output size: %zu bytes\n", output_size);
+    printf("Compression ratio: %.2fx\n", compression_ratio);
+    
+    return 0;
 }
