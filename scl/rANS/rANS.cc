@@ -10,6 +10,8 @@
 #include "rANS.hh"
 using namespace std;
 
+#define BUFFER_SIZE 1u<<16 // max block size: 65536
+
 encoder::encoder(rANSParams params) : params(params) {};
 
 // == rANS base encode step ==
@@ -44,11 +46,22 @@ void encoder::encode_symbol(uint32_t& state, char s, BitArray& bitarray) {
 // == rANS encode block ==
 // takes a large portion (block) of data and encodes it together, using encode_symbol as the building block step
 // returns the bitarray (vector of bools) corresponding to this data, to be decoded
+// IMPORTANT: data length must be <= BUFFER_SIZE, otherwise behavior is undefined
 BitArray encoder::encode_block(string data) {
+    uint32_t block_size = data.size();
+    char buf[BUFFER_SIZE];
+
     BitArray bitarray;
     uint32_t state = params.INITIAL_STATE;
 
-    for (char s : data) {
+    // read symbols into buf
+    for (uint32_t i = 0; i < block_size; i++) {
+        buf[block_size - 1 - i] = data[i]; // fill buffer in reverse order, with chars in forward order
+    }
+
+    // read symbols from buf in forward order, encode into bitstream
+    for (uint32_t i = 0; i < block_size; i++) {
+        char s = buf[i];
         encode_symbol(state, s, bitarray);
     }
 
@@ -130,6 +143,7 @@ tuple<char, uint32_t> decoder::decode_symbol(uint32_t& state, BitArray& encoded_
 // == rANS decode block ==
 // takes bitarray (fully encoded stream from the encoder), extracts data block size and final state, then proceeds through and decodes original string
 // return original string and number of bits used
+// ** assumes encoded_bitarray is processed by an encoder which does reverse encoding, so that decoding can proceed in forward direction
 tuple<string, uint32_t> decoder::decode_block(BitArray& encoded_bitarray) {
     // get data_block size from bitarray
     uint32_t data_size = 0;
@@ -151,7 +165,7 @@ tuple<string, uint32_t> decoder::decode_block(BitArray& encoded_bitarray) {
     for (uint32_t i = 0; i < data_size; i++) {
         tuple<char, uint32_t> state_num_bits = decode_symbol(state, encoded_bitarray);
         string s(1, get<0>(state_num_bits));
-        data.insert(0, s);
+        data.append(s);
         bits_consumed += get<1>(state_num_bits);
     }
 
@@ -164,7 +178,8 @@ tuple<string, uint32_t> decoder::decode_block(BitArray& encoded_bitarray) {
 
 
 //////////////////// TESTING ////////////////////
-bool test_bitarray() {
+
+bool test_bitarray() { // DEPRECATED: encoded_bitarray does not match python implementation, because we encode in reverse direction. final decoded check still applicable
     map<char, uint32_t> freq_dict = {
         {'A', 3},
         {'B', 3},
@@ -242,13 +257,14 @@ bool test_bitarray() {
     cout << "expected : ";
     expected_bitarray.print();
     
-    if (!actual_bitarray.equals(expected_bitarray)) {
-        return false;
-    }
+    // if (!actual_bitarray.equals(expected_bitarray)) {
+    //     return false;
+    // }
 
     decoder dec = decoder(params);
     tuple<string,uint32_t> decoded_data = dec.decode_block(actual_bitarray);
-    cout << get<0>(decoded_data) << endl;
+    cout << "Input string: " << data << endl;
+    cout << "Decoded string: " << get<0>(decoded_data) << endl;
     return data == get<0>(decoded_data);
 }
 
@@ -336,35 +352,35 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
 }
 
 int main(int argc, char *argv[]) {
-    bool ret_val = test_bitarray();
-    if(ret_val) {
-        printf("Success!\n");
-    } else {
-        printf("Mismatch.\n");
-    }
-
-    // uint32_t enc_avg_time = 0;
-    // uint32_t dec_avg_time = 0;
-
-    // uint32_t num_iter = 100;
-    // for (uint32_t i = 0; i < num_iter; i++) {
-    //     uint32_t enc_iter_time = 0;
-    //     uint32_t dec_iter_time = 0;
-    //     bool test_result = test_rANS(enc_iter_time, dec_iter_time);
-    //     if (!test_result) {
-    //         printf("TEST FAILED. EXITING EARLY...\n");
-    //         break;
-    //     } else {
-    //         enc_avg_time += enc_iter_time;
-    //         dec_avg_time += dec_iter_time;
-    //     }
+    // bool ret_val = test_bitarray();
+    // if(ret_val) {
+    //     printf("Success!\n");
+    // } else {
+    //     printf("Mismatch.\n");
     // }
 
-    // enc_avg_time /= num_iter;
-    // dec_avg_time /= num_iter;
+    uint32_t enc_avg_time = 0;
+    uint32_t dec_avg_time = 0;
 
-    // cout << "Avg encode time: " << enc_avg_time << "ms" << endl;
-    // cout << "Avg decode time: " << dec_avg_time << "ms" << endl;
+    uint32_t num_iter = 100;
+    for (uint32_t i = 0; i < num_iter; i++) {
+        uint32_t enc_iter_time = 0;
+        uint32_t dec_iter_time = 0;
+        bool test_result = test_rANS(enc_iter_time, dec_iter_time);
+        if (!test_result) {
+            printf("TEST FAILED. EXITING EARLY...\n");
+            break;
+        } else {
+            enc_avg_time += enc_iter_time;
+            dec_avg_time += dec_iter_time;
+        }
+    }
+
+    enc_avg_time /= num_iter;
+    dec_avg_time /= num_iter;
+
+    cout << "Avg encode time: " << enc_avg_time << "ms" << endl;
+    cout << "Avg decode time: " << dec_avg_time << "ms" << endl;
 
     return 0;
 }
