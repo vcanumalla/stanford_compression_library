@@ -271,6 +271,8 @@ tuple<string, uint32_t> decoder::decode_block_interleave2(BitArray& encoded_bita
 
     if (state[0] != params.INITIAL_STATE || state[1] != params.INITIAL_STATE) {
         cout << "FINAL STATE DOES NOT MATCH INITIAL STATE\n" << endl;
+        cout << "state[0]: " << state[0] << endl;
+        cout << "state[1]: " << state[1] << endl;
     }
 
     return tuple<string, uint32_t>{data, bits_consumed};
@@ -643,7 +645,7 @@ int main(int argc, char *argv[]) {
 
     // printf("Decompressing %s -> %s...\n", output_file_path.c_str(), output_file_path.c_str());
     auto dec_start = chrono::high_resolution_clock::now();
-    tuple<string, uint32_t> decoded_data = dec.decode_block(encoded_bitarray);
+    tuple<string, uint32_t> decoded_data = dec.decode_block_interleave2(encoded_bitarray);
     auto dec_stop = chrono::high_resolution_clock::now();
     auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
     printf("Decompression time: %.2f seconds\n", dec_time.count() / 1000.0);

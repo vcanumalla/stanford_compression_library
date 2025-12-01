@@ -9,8 +9,6 @@ build: rANS.cc rANS.hh
 	$(C++) $(CFLAGS) -o rANS rANS.cc
 
 clean::
-	@rm -f $(PROGRAMS) *.o callgrind.out.*
+	rm -f *.o rANS *tmp*
 
 .PHONY: clean all
-
-.INTERMEDIATE: $(SOURCES:%=%.o)
