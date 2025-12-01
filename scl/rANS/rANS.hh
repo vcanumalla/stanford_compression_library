@@ -102,7 +102,7 @@ class encoder {
 
     public:
         encoder(rANSParams rans_params);
-        void encode_block(string data_block, BitArray& out_stream);
+        void encode_block(char** buf, size_t len, BitArray& out_stream);
         BitArray encode(string data);
 };
 

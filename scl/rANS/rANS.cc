@@ -10,7 +10,8 @@
 #include "rANS.hh"
 using namespace std;
 
-#define BUFFER_SIZE 1u<<16 // max block size: 65536
+// max block size: 65536
+const uint32_t BUFFER_SIZE = 65536;
 
 encoder::encoder(rANSParams params) : params(params) {};
 
@@ -43,25 +44,19 @@ void encoder::encode_symbol(uint32_t& state, char s, BitArray& bitarray) {
     state = base_encode_step(s, state);
 }
 
-// == rANS encode block ==
-// takes a large portion (block) of data and encodes it together, using encode_symbol as the building block step
-// returns the bitarray (vector of bools) corresponding to this data, to be decoded
+// == rANS encode block (standard) ==
+// takes a block of data of size len and encodes it together, using encode_symbol as the building block step
+// returns the bitarray corresponding to this data, to be decoded
 // IMPORTANT: data length must be <= BUFFER_SIZE, otherwise behavior is undefined
-void encoder::encode_block(string data, BitArray& out_stream) {
-    size_t block_size = data.size();
-    char buf[BUFFER_SIZE];
-
+void encoder::encode_block(char** buf, size_t len, BitArray& out_stream) {
     uint32_t state = params.INITIAL_STATE;
-
-    // read symbols into buf
-    for (size_t i = 0; i < block_size; i++) {
-        buf[block_size - 1 - i] = data[i]; // fill buffer in reverse order, with chars in forward order
-    }
+    char* ptr = *buf;
 
     // read symbols from buf in forward order, encode into bitstream
-    for (size_t i = 0; i < block_size; i++) {
-        char s = buf[i];
+    for (size_t i = 0; i < len; i++) {
+        char s = *ptr;
         encode_symbol(state, s, out_stream);
+        ptr++; // move ptr to next char (symbol)
     }
 
     // put binary encoding of final state into bitarray
@@ -71,7 +66,7 @@ void encoder::encode_block(string data, BitArray& out_stream) {
     }
 
     // add data_block size in binary to bitarray
-    uint32_t data_size = data.length();
+    uint32_t data_size = len;
     for (uint32_t i = 0; i < params.DATA_BLOCK_SIZE_BITS; i++) {
         out_stream.push(data_size & 1u);
         data_size >>= 1u;
@@ -81,13 +76,17 @@ void encoder::encode_block(string data, BitArray& out_stream) {
 // NOTE: can be replaced by a function which streams in data from a file
 BitArray encoder::encode(string data) {
     BitArray bitstream;
-    for (size_t i = 0; i < data.size(); i += BUFFER_SIZE) {
-        // Compute the real length of the chunk (last chunk may be shorter)
-        size_t len = min((unsigned long)BUFFER_SIZE, data.size() - i);
+    char* buf = new char[BUFFER_SIZE];
+    char* ptr = (char *)(buf + BUFFER_SIZE); // end of buffer
+    size_t len = data.length();
 
-        // Pass the substring to your subfunction
-        encode_block(data.substr(i, len), bitstream);
+    for (size_t i = 0; i < len; i++) {
+        // read symbols into buf, reverse order for ptr so that buf fills in reverse with data
+        ptr--;
+        *ptr = data[i];  
     }
+
+    encode_block(&ptr, len, bitstream);
 
     return bitstream;
 }
@@ -332,7 +331,7 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
         auto enc_stop = chrono::high_resolution_clock::now();
         uint32_t len = encoded_bitarray.size();
 
-        auto enc_time = chrono::duration_cast<chrono::milliseconds>(enc_stop - enc_start);
+        auto enc_time = chrono::duration_cast<chrono::microseconds>(enc_stop - enc_start);
         // cout << "Time to encode: " << enc_time.count() << "ms" << endl;
         enc_avg_time += enc_time.count();
 
@@ -340,7 +339,7 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
         tuple<string,uint32_t> decoded_data = dec.decode_block(encoded_bitarray);
         auto dec_stop = chrono::high_resolution_clock::now();
         
-        auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
+        auto dec_time = chrono::duration_cast<chrono::microseconds>(dec_stop - dec_start);
         // cout << "Time to decode: " << dec_time.count() << "ms" << endl;
         dec_avg_time += dec_time.count();
 
@@ -353,6 +352,10 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
         }
         if (get<0>(decoded_data) != data) {
             printf("Decoded string does not match input.\n");
+            if (len < 100) {
+                cout << "Decoded: " << get<0>(decoded_data) << endl;
+                cout << "Original: " << data << endl;
+            }
             return false;
         }
     }
@@ -383,8 +386,8 @@ int main(int argc, char *argv[]) {
     enc_avg_time /= num_iter;
     dec_avg_time /= num_iter;
 
-    cout << "Avg encode time: " << enc_avg_time << "ms" << endl;
-    cout << "Avg decode time: " << dec_avg_time << "ms" << endl;
+    cout << "Avg encode time: " << enc_avg_time << "us" << endl;
+    cout << "Avg decode time: " << dec_avg_time << "us" << endl;
 
     return 0;
 }
