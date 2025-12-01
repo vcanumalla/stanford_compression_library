@@ -25,7 +25,7 @@ uint32_t encoder::base_encode_step(char s, uint32_t state) {
 // == rANS shrink state ==
 // takes current state, next symbol to be encoded, brings state within [L,H] range if needed
 // returns the scaled state and the bits outputted to stream in the process of scaling, through reference
-void encoder::shrink_state(uint32_t& state, char next_symbol, bitstream& bitarray) {
+void encoder::shrink_state(uint32_t& state, char next_symbol, BitArray& bitarray) {
     while (state > params.max_shrunk_state[next_symbol]) {
         bool new_bit = state % (1u << params.NUM_BITS_OUT);
         bitarray.push(new_bit); // using vector as a stack, appending bits to end during encode, then popping from end->start during decode (reverse direction)
@@ -36,7 +36,7 @@ void encoder::shrink_state(uint32_t& state, char next_symbol, bitstream& bitarra
 // == rANS encode symbol ==
 // takes current state, next_symbol to be encoded, calculates next state using base_encode_step and shrink_state
 // returns next state and bits outputted from shrink state, through reference
-void encoder::encode_symbol(uint32_t& state, char s, bitstream& bitarray) {
+void encoder::encode_symbol(uint32_t& state, char s, BitArray& bitarray) {
     shrink_state(state, s, bitarray);
     state = base_encode_step(s, state);
 }
@@ -44,8 +44,8 @@ void encoder::encode_symbol(uint32_t& state, char s, bitstream& bitarray) {
 // == rANS encode block ==
 // takes a large portion (block) of data and encodes it together, using encode_symbol as the building block step
 // returns the bitarray (vector of bools) corresponding to this data, to be decoded
-bitstream encoder::encode_block(string data) {
-    bitstream bitarray;
+BitArray encoder::encode_block(string data) {
+    BitArray bitarray;
     uint32_t state = params.INITIAL_STATE;
 
     for (char s : data) {
@@ -105,7 +105,7 @@ char decoder::base_decode_step(uint32_t& state) {
 // == rANS expand state ==
 // takes current state and available bits from bitarray, expands state to range [L,H]
 // returns number of bits consumed from bitarray to scale, and new state (modifies by reference)
-uint32_t decoder::expand_state(uint32_t& state, bitstream& encoded_bitarray) {
+uint32_t decoder::expand_state(uint32_t& state, BitArray& encoded_bitarray) {
     uint32_t num_bits = 0;
     while (state < params.L) {
         bool state_remainder = encoded_bitarray.pop();
@@ -120,7 +120,7 @@ uint32_t decoder::expand_state(uint32_t& state, bitstream& encoded_bitarray) {
 // == rANS decode symbol ==
 // takes current state and bitarray, decodes one symbol and ensures range checking of updated state
 // returns tuple containing decoded symbol and num bits used to expand (scale) the state; also modifies state by reference
-tuple<char, uint32_t> decoder::decode_symbol(uint32_t& state, bitstream& encoded_bitarray) {
+tuple<char, uint32_t> decoder::decode_symbol(uint32_t& state, BitArray& encoded_bitarray) {
     char s = base_decode_step(state);
 
     uint32_t num_bits_consumed = expand_state(state, encoded_bitarray);
@@ -130,7 +130,7 @@ tuple<char, uint32_t> decoder::decode_symbol(uint32_t& state, bitstream& encoded
 // == rANS decode block ==
 // takes bitarray (fully encoded stream from the encoder), extracts data block size and final state, then proceeds through and decodes original string
 // return original string and number of bits used
-tuple<string, uint32_t> decoder::decode_block(bitstream& encoded_bitarray) {
+tuple<string, uint32_t> decoder::decode_block(BitArray& encoded_bitarray) {
     // get data_block size from bitarray
     uint32_t data_size = 0;
     for (uint32_t i = 0; i < params.DATA_BLOCK_SIZE_BITS; i++) {
@@ -172,10 +172,10 @@ bool test_bitarray() {
     };
     
     Frequencies freq = Frequencies(freq_dict);
-    string data = "ACB";
+    string data = "ACBBBCAAB";
     rANSParams params = rANSParams(freq, 5, 1);
 
-    bitstream expected_bitarray = {};
+    BitArray expected_bitarray = {};
 
     // initial state
     uint32_t st = 8; // state variable
@@ -232,7 +232,7 @@ bool test_bitarray() {
 
     // use encoder-decoder and check
     encoder enc = encoder(params);
-    bitstream actual_bitarray = enc.encode_block(data);
+    BitArray actual_bitarray = enc.encode_block(data);
     if (actual_bitarray.size() != expected_bitarray.size()) {
         printf("Size mismatch. Actual: %zu, Expected: %zu\n", actual_bitarray.size(), expected_bitarray.size());
     }
@@ -301,7 +301,7 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
         decoder dec = decoder(params);
 
         auto enc_start = chrono::high_resolution_clock::now();
-        bitstream encoded_bitarray = enc.encode_block(data);
+        BitArray encoded_bitarray = enc.encode_block(data);
         auto enc_stop = chrono::high_resolution_clock::now();
         uint32_t len = encoded_bitarray.size();
 
@@ -336,35 +336,35 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
 }
 
 int main(int argc, char *argv[]) {
-    // bool ret_val = test_bitarray();
-    // if(ret_val) {
-    //     printf("Success!\n");
-    // } else {
-    //     printf("Mismatch.\n");
-    // }
-
-    uint32_t enc_avg_time = 0;
-    uint32_t dec_avg_time = 0;
-
-    uint32_t num_iter = 100;
-    for (uint32_t i = 0; i < num_iter; i++) {
-        uint32_t enc_iter_time = 0;
-        uint32_t dec_iter_time = 0;
-        bool test_result = test_rANS(enc_iter_time, dec_iter_time);
-        if (!test_result) {
-            printf("TEST FAILED. EXITING EARLY...\n");
-            break;
-        } else {
-            enc_avg_time += enc_iter_time;
-            dec_avg_time += dec_iter_time;
-        }
+    bool ret_val = test_bitarray();
+    if(ret_val) {
+        printf("Success!\n");
+    } else {
+        printf("Mismatch.\n");
     }
 
-    enc_avg_time /= num_iter;
-    dec_avg_time /= num_iter;
+    // uint32_t enc_avg_time = 0;
+    // uint32_t dec_avg_time = 0;
 
-    cout << "Avg encode time: " << enc_avg_time << "ms" << endl;
-    cout << "Avg decode time: " << dec_avg_time << "ms" << endl;
+    // uint32_t num_iter = 100;
+    // for (uint32_t i = 0; i < num_iter; i++) {
+    //     uint32_t enc_iter_time = 0;
+    //     uint32_t dec_iter_time = 0;
+    //     bool test_result = test_rANS(enc_iter_time, dec_iter_time);
+    //     if (!test_result) {
+    //         printf("TEST FAILED. EXITING EARLY...\n");
+    //         break;
+    //     } else {
+    //         enc_avg_time += enc_iter_time;
+    //         dec_avg_time += dec_iter_time;
+    //     }
+    // }
+
+    // enc_avg_time /= num_iter;
+    // dec_avg_time /= num_iter;
+
+    // cout << "Avg encode time: " << enc_avg_time << "ms" << endl;
+    // cout << "Avg decode time: " << dec_avg_time << "ms" << endl;
 
     return 0;
 }

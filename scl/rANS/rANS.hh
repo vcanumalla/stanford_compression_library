@@ -5,6 +5,8 @@
 #include <map>
 #include <array>
 #include <bitset>
+
+#include "BitArray.hh"
 using namespace std;
 
 struct Frequencies {
@@ -91,105 +93,16 @@ struct rANSParams {
 
 };
 
-// note: using custom class to encode bitarrays, operations done on bitarrays will use bitwise operations
-class bitstream {
-    private:
-        vector<uint8_t> data;
-        uint8_t bit_ptr;
-        uint64_t nelem;
-
-    public:
-        bitstream() {
-            data = {};
-            bit_ptr = -1;
-            nelem = 0;
-        }
-
-        void push(bool b) {
-            bit_ptr++;
-            if (bit_ptr % 8 == 0) {
-                data.push_back(0);
-                bit_ptr = 0;
-            }
-
-            if (b) {
-                data.back() |= 1u << (7 - bit_ptr);
-            }
-
-            nelem++;
-        }
-
-        void push_many(bool bits[], uint32_t len) {
-            for (uint32_t i = 0; i < len; i++) {
-                push(bits[i]);
-            }
-        }
-
-        bool pop() {
-            // uint8_t last_elem = bit_ptr - 1;
-            bool b = (data.back() >> (7 - bit_ptr)) & 1u;
-            data[(nelem + 7) / 8] &= (1u << (7 - bit_ptr));
-
-            if (bit_ptr == 0) {
-                if (nelem == 1) {
-                    bit_ptr = -1; // marks that data is empty
-                }
-                bit_ptr = 7;
-                data.pop_back(); // remove last byte from data vector
-            } else {
-                bit_ptr--;
-            }
-
-            nelem--;
-            return b;
-        }
-
-        bool* pop_many(bool arr[], uint32_t n) {
-            for (uint32_t i = 0; i < n; i++) {
-                arr[i] = pop();
-            }
-            return arr;
-        }
-
-        uint64_t size() {
-            return nelem;
-        }
-
-        bool equals(bitstream bits) {
-            if (nelem != bits.size()) {
-                return false;
-            }
-            for (uint64_t i = 0; i < (nelem + 7) / 8; i++) {
-                if (data[i] != bits.data[i]) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        void print() {
-            cout << "Printing bitarray of size " << size() << ": ";
-            for (uint64_t i = 0; i < (nelem + 7) / 8; i++) {
-                cout << bitset<8>(data[i]) << " ";
-            }
-            cout << endl;
-        }
-
-        bool isempty() {
-            return data.empty() || bit_ptr == -1; // redundant checks
-        }
-};
-
 class encoder {
     private:
         rANSParams params;
         uint32_t base_encode_step(char s, uint32_t state);
-        void shrink_state(uint32_t& state, char next_symbol, bitstream& bitarray);
-        void encode_symbol(uint32_t& state, char next_symbol, bitstream& bitarray);
+        void shrink_state(uint32_t& state, char next_symbol, BitArray& bitarray);
+        void encode_symbol(uint32_t& state, char next_symbol, BitArray& bitarray);
 
     public:
         encoder(rANSParams rans_params);
-        bitstream encode_block(string data_block);
+        BitArray encode_block(string data_block);
 };
 
 class decoder {
@@ -197,10 +110,10 @@ class decoder {
         rANSParams params;
         uint32_t find_bin(vector<uint32_t> cum_freq_list, uint32_t slot);
         char base_decode_step(uint32_t& state);
-        uint32_t expand_state(uint32_t& state, bitstream& encoded_bitarray);
-        tuple<char, uint32_t> decode_symbol(uint32_t& state, bitstream& encoded_bitarray);
+        uint32_t expand_state(uint32_t& state, BitArray& encoded_bitarray);
+        tuple<char, uint32_t> decode_symbol(uint32_t& state, BitArray& encoded_bitarray);
 
     public:
         decoder(rANSParams rans_params);
-        tuple<string, uint32_t> decode_block(bitstream& encoded_bitarray);
+        tuple<string, uint32_t> decode_block(BitArray& encoded_bitarray);
 };
