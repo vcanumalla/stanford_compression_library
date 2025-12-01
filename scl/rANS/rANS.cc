@@ -39,10 +39,9 @@ void encoder::shrink_state(uint32_t& state, char symbol, BitArray& bitarray) {
 // == rANS encode symbol ==
 // takes current state, next_symbol to be encoded, calculates next state using base_encode_step and shrink_state
 // returns next state and bits outputted from shrink state, through reference
-void encoder::encode_symbol(uint32_t& state, char** symbol_ptr, BitArray& bitarray) {
-    shrink_state(state, **symbol_ptr, bitarray);
-    state = base_encode_step(**symbol_ptr, state);
-    *symbol_ptr += 1;
+void encoder::encode_symbol(uint32_t& state, char* symbol_ptr, BitArray& bitarray) {
+    shrink_state(state, *symbol_ptr, bitarray);
+    state = base_encode_step(*symbol_ptr, state);
 }
 
 // == rANS encode block (standard) ==
@@ -55,7 +54,8 @@ void encoder::encode_block(char** buf, size_t len, BitArray& out_stream) {
 
     // read symbols from buf in forward order, encode into bitstream
     for (size_t i = 0; i < len; i++) {
-        encode_symbol(state, &ptr, out_stream);
+        encode_symbol(state, ptr, out_stream);
+        ptr++;
     }
 
     // put binary encoding of final state into bitarray
@@ -83,11 +83,14 @@ void encoder::encode_block_interleave2(char** buf, size_t len, BitArray& out_str
 
     // read symbols from buf in forward order, encode into bitstream
     if (len & 1u) { // odd num symbols, put extra into state1
-        encode_symbol(state[1], &ptr, out_stream);
+        encode_symbol(state[1], ptr, out_stream);
+        ptr += 1;
     }
-    for (size_t i = 0; i < len; i += 2) { // alternate putting sym into state0, state1
-        encode_symbol(state[0], &ptr, out_stream);
-        encode_symbol(state[1], &ptr, out_stream);
+
+    for (size_t i = 0; i < len - 1; i += 2) { // alternate putting sym into state0, state1
+        encode_symbol(state[0], ptr, out_stream);
+        encode_symbol(state[1], ptr + 1, out_stream);
+        ptr += 2;
     }
 
     // put binary encoding of final states into bitarray; interleave
@@ -119,7 +122,7 @@ BitArray encoder::encode(string data) {
         *ptr = data[i];  
     }
 
-    encode_block(&ptr, len, bitstream);
+    encode_block_interleave2(&ptr, len, bitstream);
 
     return bitstream;
 }
@@ -240,19 +243,28 @@ tuple<string, uint32_t> decoder::decode_block_interleave2(BitArray& encoded_bita
         state[0] |= encoded_bitarray.pop() ? 1u : 0;
     }
 
-    uint32_t bits_consumed = params.DATA_BLOCK_SIZE_BITS + params.NUM_STATE_BITS;
+    uint32_t bits_consumed = params.DATA_BLOCK_SIZE_BITS + 2 * params.NUM_STATE_BITS;
     string data = "";
+    tuple<char, uint32_t> sym0_num_bits;
+    tuple<char, uint32_t> sym1_num_bits;
 
-    for (uint32_t i = 0; i < data_size; i++) {
-        tuple<char, uint32_t> state1_num_bits = decode_symbol(state[1], encoded_bitarray);
-        string s1(1, get<0>(state1_num_bits));
+    for (uint32_t i = 0; i < data_size - 1; i += 2) {
+        sym1_num_bits = decode_symbol(state[1], encoded_bitarray);
+        string s1(1, get<0>(sym1_num_bits));
         data.append(s1);
-        bits_consumed += get<1>(state1_num_bits);
+        bits_consumed += get<1>(sym1_num_bits);
 
-        tuple<char, uint32_t> state0_num_bits = decode_symbol(state[0], encoded_bitarray);
-        string s0(1, get<0>(state0_num_bits));
+        sym0_num_bits = decode_symbol(state[0], encoded_bitarray);
+        string s0(1, get<0>(sym0_num_bits));
         data.append(s0);
-        bits_consumed += get<1>(state0_num_bits);
+        bits_consumed += get<1>(sym0_num_bits);
+    }
+
+    if (data_size & 1u) {
+        sym1_num_bits = decode_symbol(state[1], encoded_bitarray);
+        string s1(1, get<0>(sym1_num_bits));
+        data.append(s1);
+        bits_consumed += get<1>(sym1_num_bits);
     }
 
     if (state[0] != params.INITIAL_STATE || state[1] != params.INITIAL_STATE) {
@@ -405,25 +417,26 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
         auto enc_start = chrono::high_resolution_clock::now();
         BitArray encoded_bitarray = enc.encode(data);
         auto enc_stop = chrono::high_resolution_clock::now();
+
         uint32_t len = encoded_bitarray.size();
 
-        auto enc_time = chrono::duration_cast<chrono::microseconds>(enc_stop - enc_start);
-        // cout << "Time to encode: " << enc_time.count() << "ms" << endl;
-        enc_avg_time += enc_time.count();
-
         auto dec_start = chrono::high_resolution_clock::now();
-        tuple<string,uint32_t> decoded_data = dec.decode_block(encoded_bitarray);
+        tuple<string,uint32_t> decoded_data = dec.decode_block_interleave2(encoded_bitarray);
         auto dec_stop = chrono::high_resolution_clock::now();
         
+        // add time to running sum/avg
+        auto enc_time = chrono::duration_cast<chrono::microseconds>(enc_stop - enc_start);
+        enc_avg_time += enc_time.count();
         auto dec_time = chrono::duration_cast<chrono::microseconds>(dec_stop - dec_start);
-        // cout << "Time to decode: " << dec_time.count() << "ms" << endl;
         dec_avg_time += dec_time.count();
 
-        // cout << "Input string: " << data << endl;
-        // cout << "Decoded string: " << get<0>(decoded_data) << endl;
+        // if (len < 100) {
+        //     cout << "Decoded: " << get<0>(decoded_data) << endl;
+        //     cout << "Original: " << data << endl;
+        // }
 
         if (get<1>(decoded_data) != len) {
-            printf("Did not consume correct number of bits.\n");
+            cout << "Bits consumed (" << get<1>(decoded_data) << ") does not match bitarray length (" << len << ")" << endl;
             return false;
         }
         if (get<0>(decoded_data) != data) {

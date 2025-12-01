@@ -78,12 +78,10 @@ struct rANSParams {
 
         K = freqs.size();
 
-        uint32_t i = 0;
         for (const auto& kv : freqs.freq_dict) {
             uint32_t f = kv.second;
             min_shrunk_state[kv.first] = RANGE_FACTOR * f;
             max_shrunk_state[kv.first] = RANGE_FACTOR * f * (1u << NUM_BITS_OUT) - 1u;
-            i++;
         }
 
         INITIAL_STATE = L;
@@ -98,7 +96,7 @@ class encoder {
         rANSParams params;
         uint32_t base_encode_step(char s, uint32_t state);
         void shrink_state(uint32_t& state, char s, BitArray& bitarray);
-        void encode_symbol(uint32_t& state, char** symbol_ptr, BitArray& bitarray);
+        void encode_symbol(uint32_t& state, char* symbol_ptr, BitArray& bitarray);
 
     public:
         encoder(rANSParams rans_params);
