@@ -6,6 +6,8 @@
 #include <tuple>
 #include <random>
 #include <chrono>
+#include <fstream>
+#include <cstdio>
 
 #include "rANS.hh"
 using namespace std;
@@ -234,7 +236,7 @@ bool test_bitarray() {
     encoder enc = encoder(params);
     BitArray actual_bitarray = enc.encode_block(data);
     if (actual_bitarray.size() != expected_bitarray.size()) {
-        printf("Size mismatch. Actual: %zu, Expected: %zu\n", actual_bitarray.size(), expected_bitarray.size());
+        printf("Size mismatch. Actual: %llu, Expected: %llu\n", actual_bitarray.size(), expected_bitarray.size());
     }
 
     cout << "actual: ";
@@ -334,37 +336,173 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
     dec_avg_time /= 3;
     return true;
 }
+Frequencies compute_frequencies_from_file(string file_path) {
+    map<char, uint32_t> freq_dict;
+    ifstream file(file_path);
+    if (!file.is_open()) {
+        printf("Error: Could not open file '%s'.\n", file_path.c_str());
+        return Frequencies(freq_dict);
+    }
+    
+    string line;
+    while (getline(file, line)) {
+        // Count all characters in the line, but ignore \r (carriage return)
+        for (char c : line) {
+            if (c != '\r') {
+                freq_dict[c]++;
+            }
+        }
+        // getline removes the newline, but we need to count it to match actual file contents
+        // Add newline after each line (matches Python behavior where 'for line in f' includes newline)
+        freq_dict['\n']++;
+    }
+    
+    return Frequencies(freq_dict);
+}
+
+// Helper function to check if file exists
+bool file_exists(const string& file_path) {
+    ifstream file(file_path);
+    return file.good();
+}
+
+string read_file_to_string(const string& file_path) {
+    ifstream file(file_path);
+    if (!file.is_open()) {
+        printf("Error: Could not open file '%s' for reading.\n", file_path.c_str());
+        return "";
+    }
+    
+    string content;
+    string line;
+    while (getline(file, line)) {
+        // Add characters from line, but ignore \r (carriage return)
+        for (char c : line) {
+            if (c != '\r') {
+                content += c;
+            }
+        }
+        content += '\n';
+    }
+    
+    return content;
+}
+
+void write_bitarray_to_file(const BitArray& bitarray, const string& file_path) {
+    ofstream file(file_path, ios::binary);
+    if (!file.is_open()) {
+        printf("Error: Could not open file '%s' for writing.\n", file_path.c_str());
+        return;
+    }
+    
+    BitArray copy = bitarray;
+    uint64_t num_bits = copy.size();
+    file.write(reinterpret_cast<const char*>(&num_bits), sizeof(num_bits));
+    
+    vector<bool> bits;
+    while (!copy.isempty()) {
+        bits.push_back(copy.pop());
+    }
+    
+    uint64_t num_bytes = (num_bits + 7) / 8;
+    for (uint64_t i = 0; i < num_bytes; i++) {
+        uint8_t byte = 0;
+        int bits_in_byte = (i == num_bytes - 1 && num_bits % 8 != 0) ? (num_bits % 8) : 8;
+        for (int j = 0; j < bits_in_byte; j++) {
+            uint64_t bit_idx = i * 8 + j;
+            if (bit_idx < bits.size()) {
+                bool bit = bits[bit_idx];
+                byte |= (bit ? 1u : 0u) << j;
+            }
+        }
+        file.write(reinterpret_cast<const char*>(&byte), sizeof(byte));
+    }
+}
+
+// Helper function to read BitArray from file
+BitArray read_bitarray_from_file(const string& file_path) {
+    ifstream file(file_path, ios::binary);
+    if (!file.is_open()) {
+        printf("Error: Could not open file '%s' for reading.\n", file_path.c_str());
+        return BitArray();
+    }
+    
+    // Read the size (number of bits)
+    uint64_t num_bits;
+    file.read(reinterpret_cast<char*>(&num_bits), sizeof(num_bits));
+    
+    // Read bytes and convert to bits
+    BitArray bitarray;
+    uint64_t num_bytes = (num_bits + 7) / 8;
+    vector<bool> bits;
+    
+    // Read all bytes and extract bits
+    for (uint64_t i = 0; i < num_bytes; i++) {
+        uint8_t byte;
+        file.read(reinterpret_cast<char*>(&byte), sizeof(byte));
+        
+        int bits_in_byte = (i == num_bytes - 1 && num_bits % 8 != 0) ? (num_bits % 8) : 8;
+        for (int j = 0; j < bits_in_byte; j++) {
+            bool bit = (byte >> j) & 1u;
+            bits.push_back(bit);
+        }
+    }
+    
+    // Push bits in reverse order (since BitArray is a stack)
+    // The last bit read should be the first popped
+    for (int i = bits.size() - 1; i >= 0; i--) {
+        bitarray.push(bits[i]);
+    }
+    
+    return bitarray;
+}
 
 int main(int argc, char *argv[]) {
-    bool ret_val = test_bitarray();
-    if(ret_val) {
-        printf("Success!\n");
-    } else {
-        printf("Mismatch.\n");
-    }
-
-    // uint32_t enc_avg_time = 0;
-    // uint32_t dec_avg_time = 0;
-
-    // uint32_t num_iter = 100;
-    // for (uint32_t i = 0; i < num_iter; i++) {
-    //     uint32_t enc_iter_time = 0;
-    //     uint32_t dec_iter_time = 0;
-    //     bool test_result = test_rANS(enc_iter_time, dec_iter_time);
-    //     if (!test_result) {
-    //         printf("TEST FAILED. EXITING EARLY...\n");
-    //         break;
-    //     } else {
-    //         enc_avg_time += enc_iter_time;
-    //         dec_avg_time += dec_iter_time;
-    //     }
+    // bool ret_val = test_bitarray();
+    // if(ret_val) {
+    //     printf("Success!\n");
+    // } else {
+    //     printf("Mismatch.\n");
     // }
 
-    // enc_avg_time /= num_iter;
-    // dec_avg_time /= num_iter;
 
-    // cout << "Avg encode time: " << enc_avg_time << "ms" << endl;
-    // cout << "Avg decode time: " << dec_avg_time << "ms" << endl;
+    if (argc != 3) {
+        printf("Usage: %s <input_file> <output_file>\n", argv[0]);
+        return 1;
+    }
 
-    return 0;
+    string input_file_path = argv[1];
+    string output_file_path = argv[2];
+
+    if (!file_exists(input_file_path)) {
+        printf("Error: Input file '%s' does not exist.\n", input_file_path.c_str());
+        return 1;
+    }
+    
+    printf("Computing frequencies from %s...\n", input_file_path.c_str());
+    Frequencies freqs = compute_frequencies_from_file(input_file_path);
+    printf("Found %zu unique characters\n", freqs.size());
+    
+    // IMPORTANT: Sort freq keys lexicographically to match Python's sorted dict
+    // This mirrors Python's behavior and keeps benchmarks deterministic
+    map<char, uint32_t> sorted_freq_dict;
+    for (const auto& kv : freqs.freq_dict) {
+        sorted_freq_dict[kv.first] = kv.second;
+    }
+    freqs = Frequencies(sorted_freq_dict);
+    
+    // output the list of keys to txt (in sorted order, matching Python)
+    ofstream freq_file("freqs_c.txt");
+    for (const auto& kv : freqs.freq_dict) {
+        freq_file << kv.first << endl;
+    }
+    freq_file.close();
+    printf("Total characters: %u\n", freqs.total_freq());
+    
+    printf("Creating rANS encoder/decoder...\n");
+    rANSParams params = rANSParams(freqs, 32, 1);
+    
+    encoder enc = encoder(params);
+    decoder dec = decoder(params);
+
 }
