@@ -5,7 +5,7 @@ TFLAGS = -pthread
 LDFLAGS =
 LDLIBS =
 
-PROGRAMS = rANS rANS_buf rANS_thread rANS_implicit rANS_implicit_opt
+PROGRAMS = rANS rANS_buf rANS_thread rANS_explicit rANS_explicit_opt
 
 
 build: rANS.cc rANS.hh
@@ -17,14 +17,14 @@ buf: rANS_buf.cc rANS_buf.hh
 thread: rANS_thread.cc rANS_thread.hh
 	$(C++) $(CFLAGS) $(TFLAGS) -o rANS_thread rANS_thread.cc
 
-implicit: rANS_implicit.cc rANS_implicit.hh
-	$(C++) $(CFLAGS) $(TFLAGS) -o rANS_implicit rANS_implicit.cc
+explicit: rANS_explicit.cc rANS_explicit.hh
+	$(C++) $(CFLAGS) $(TFLAGS) -o rANS_explicit rANS_explicit.cc
 
-implicit_opt: rANS_implicit_opt.cc rANS_implicit_opt.hh
-	$(C++) $(CFLAGS) $(TFLAGS) -o rANS_implicit_opt rANS_implicit_opt.cc
+explicit_opt: rANS_explicit_opt.cc rANS_explicit_opt.hh
+	$(C++) $(CFLAGS) $(TFLAGS) -o rANS_explicit_opt rANS_explicit_opt.cc
 
 clean::
-	@rm -f $(PROGRAMS) *.o *.decoded *tmp*
+	rm -f $(PROGRAMS) *.o *.decoded *tmp*
 
 .PHONY: clean all
 

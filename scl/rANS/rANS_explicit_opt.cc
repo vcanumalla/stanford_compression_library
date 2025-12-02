@@ -9,7 +9,7 @@
 #include <fstream>
 #include <cstdio>
 
-#include "rANS_thread.hh"
+#include "rANS_explicit_opt.hh"
 using namespace std;
 
 // max block size: 65536
@@ -45,6 +45,15 @@ void encoder::encode_symbol(uint32_t& state, char s, uint8_t** ptr) {
     shrink_state(state, s, ptr);
     base_encode_step(s, state);
 }
+
+// == rANS encode half ==
+void encoder::encode_half(const string& data, size_t start_idx, size_t step,uint32_t& state, uint8_t** ptr) {
+    for (size_t i = start_idx; i >= 0 && i < data.size(); i -= step) {
+        char s = data[i];
+        encode_symbol(state, s, ptr);
+    }
+}
+
 
 tuple<uint8_t*, uint8_t*, uint8_t*> encoder::encode(string data, size_t* len)
 {
@@ -97,6 +106,8 @@ tuple<uint8_t*, uint8_t*, uint8_t*> encoder::encode(string data, size_t* len)
 }
 
 
+
+
 decoder::decoder(rANSParams params) : params(params) {};
 
 // == rANS find bin ==
@@ -111,20 +122,13 @@ uint32_t decoder::find_bin(vector<uint32_t> cum_freq_list, uint32_t slot) {
 // takes current state, decodes one symbol
 // returns decoded symbol and updated (prev) state (modifies through reference)
 char decoder::base_decode_step(uint32_t& state) {
-    uint32_t block_id = state / params.M;
     uint32_t slot = state % params.M;
+    const ransDecSym& ds = params.decode_table[slot];
 
-    map<char, uint32_t> cum_prob_list = params.freqs.cumulative_freq_dict();
-    vector<uint32_t> values;
-    for (auto& kv : cum_prob_list) {
-        values.push_back(kv.second);
-    }
+    char s = ds.s;
 
-    uint32_t symbol_bin = find_bin(values, slot);
-    char s = params.freqs.alphabet()[symbol_bin];
-
-    uint32_t prev_state = block_id * params.freqs.frequency(s) + slot - params.freqs.cumulative_freq_dict()[s];
-    state = prev_state;
+    uint32_t block_id = state / params.M;
+    state = block_id * ds.freq + (slot - ds.cum_freq);
     return s;
 }
 
@@ -145,6 +149,20 @@ char decoder::decode_symbol(uint32_t& state, uint8_t** ptr) {
     char s = base_decode_step(state);
     expand_state(state, ptr);
     return s;
+}
+
+// == rANS decode half  ==
+// decodes one half of the data using the provided state and pointer
+// stores result in the provided string reference
+void decoder::decode_half(uint32_t data_size, uint8_t** ptr, uint32_t state, string& result, bool is_state1) {
+    for (uint32_t i = 0; i < data_size; i++) {
+        char s = decode_symbol(state, ptr);
+        result += s;
+    }
+    
+    if (state != params.INITIAL_STATE) {
+        cout << "FINAL STATE DOES NOT MATCH INITIAL STATE (half: " << (is_state1 ? "1" : "0") << ")\n" << endl;
+    }
 }
 
 // == rANS decode block (parallel version) ==
@@ -496,17 +514,17 @@ int main(int argc, char *argv[]) {
     printf("Output size: %zu bytes\n", output_size);
     printf("Compression ratio: %.2fx\n", compression_ratio);
 
-    // printf("Decompressing %s -> %s...\n", output_file_path.c_str(), output_file_path.c_str());
+    string decoded_output_path = output_file_path + ".decoded";
+    printf("\nDecompressing %s -> %s...\n", output_file_path.c_str(), decoded_output_path.c_str());
     auto dec_start = chrono::high_resolution_clock::now();
     string decoded_data = dec.decode(&encoded_begin_ptr0, &encoded_begin_ptr1);
     auto dec_stop = chrono::high_resolution_clock::now();
     auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
-    printf("\nDecompression complete!\n");
+    printf("Decompression complete!\n");
     printf("Decompression time: %.2f seconds\n", dec_time.count() / 1000.0);
     delete[] buf;
     
     // Write decoded data to a file for verification
-    string decoded_output_path = output_file_path + ".decoded";
     ofstream decoded_out(decoded_output_path, ios::binary);
     if (!decoded_out.is_open()) {
         printf("Error: Could not open file '%s' for writing decoded output.\n", decoded_output_path.c_str());
@@ -514,6 +532,45 @@ int main(int argc, char *argv[]) {
         decoded_out.write(decoded_data.data(), decoded_data.size());
         decoded_out.close();
         printf("Decoded output written to: %s\n", decoded_output_path.c_str());
+    }
+
+    // verify decoded file matches original
+    ifstream original_file(input_file_path, ios::binary);
+    ifstream decoded_file(decoded_output_path, ios::binary);
+
+    if (!original_file.is_open() || !decoded_file.is_open()) {
+        std::cerr << "Error opening files.\n";
+        return false;
+    }
+
+    // check file size for early fail
+    original_file.seekg(0, ios::end);
+    decoded_file.seekg(0, ios::end);
+    streamsize size1 = original_file.tellg();
+    streamsize size2 = decoded_file.tellg();
+    if (size1 != size2) {
+        return false;
+    }
+    original_file.seekg(0);
+    decoded_file.seekg(0);
+
+    // Compare contents in blocks
+    size_t bufferSize = 4096;
+    vector<char> buffer1(bufferSize);
+    vector<char> buffer2(bufferSize);
+
+    while (original_file && decoded_file) {
+        original_file.read(buffer1.data(), bufferSize);
+        decoded_file.read(buffer2.data(), bufferSize);
+
+        streamsize bytesRead1 = original_file.gcount();
+        streamsize bytesRead2 = decoded_file.gcount();
+
+        if (bytesRead1 != bytesRead2) return false;
+        if (!equal(buffer1.begin(), buffer1.begin() + bytesRead1, buffer2.begin())) {
+            printf("Error: mismatch in decoded output and original file.\n");
+            return 1;
+        }
     }
 
     return 0;
