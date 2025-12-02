@@ -70,7 +70,10 @@ def main():
 
     decompressed_file = output_file_path + ".decompressed"
     print(f"Decompressing to {decompressed_file}...")
+    start_time = time.time()
     decoder.decode_file(output_file_path, decompressed_file)
+    end_time = time.time()
+    print(f"Decompression time: {end_time - start_time:.2f} seconds")
     
     # Check if files match
     with open(input_file_path, 'r', encoding='utf-8') as f1:
