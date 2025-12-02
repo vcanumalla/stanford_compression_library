@@ -18,6 +18,9 @@ thread: rANS_thread.cc rANS_thread.hh
 implicit: rANS_implicit.cc rANS_implicit.hh
 	$(C++) $(CFLAGS) $(TFLAGS) -o rANS_implicit rANS_implicit.cc
 
+implicit_opt: rANS_implicit_opt.cc rANS_implicit_opt.hh
+	$(C++) $(CFLAGS) $(TFLAGS) -o rANS_implicit_opt rANS_implicit_opt.cc
+
 clean::
 	@rm -f $(PROGRAMS) *.o callgrind.out.* *.decoded *tmp*
 
