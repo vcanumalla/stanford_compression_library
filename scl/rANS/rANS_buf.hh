@@ -99,7 +99,7 @@ class encoder {
 
     public:
         encoder(rANSParams rans_params);
-        void encode(string data, size_t* len, uint8_t** ptr_begin);
+        tuple<uint8_t*, uint8_t*> encode(string data, size_t* len);
 };
 
 class decoder {

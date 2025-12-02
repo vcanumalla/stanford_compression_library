@@ -47,7 +47,7 @@ void encoder::encode_symbol(uint32_t& state, char s, uint8_t** ptr) {
 }
 
 // == rANS encode ==
-void encoder::encode(string data, size_t* len, uint8_t** ptr_start) {
+tuple<uint8_t*, uint8_t*> encoder::encode(string data, size_t* len) {
     size_t in_size = data.length();
     size_t out_size = in_size + (in_size >> 3) + 256; // safe upper bound
     uint8_t* buf = new uint8_t[out_size];
@@ -78,7 +78,7 @@ void encoder::encode(string data, size_t* len, uint8_t** ptr_start) {
 
     *len = (buf + out_size) - ptr;
 
-    *ptr_start = ptr;
+    return tuple<uint8_t*, uint8_t*>{buf, ptr};
 }
 
 
@@ -215,39 +215,38 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
     vector<char> alphas[] = {alpha1, alpha2, alpha3};
     for (int i = 0; i < 3; i++) {
         Frequencies freq = Frequencies(freq_dicts[i]);
-        string data = random_string(10000, alphas[i]);
+        string data = random_string(50, alphas[i]);
         rANSParams params = rANSParams(freq, 32, 1);
 
         encoder enc = encoder(params);
         decoder dec = decoder(params);
 
         size_t len;
-        uint8_t** ptr_begin = NULL;
         auto enc_start = chrono::high_resolution_clock::now();
-        enc.encode(data, &len, ptr_begin);
+        tuple<uint8_t*, uint8_t*> ptrs = enc.encode(data, &len);
         auto enc_stop = chrono::high_resolution_clock::now();
 
+        uint8_t* buf = get<0>(ptrs);
+        uint8_t* ptr_begin = get<1>(ptrs);
+
         auto enc_time = chrono::duration_cast<chrono::microseconds>(enc_stop - enc_start);
-        // cout << "Time to encode: " << enc_time.count() << "ms" << endl;
         enc_avg_time += enc_time.count();
 
         auto dec_start = chrono::high_resolution_clock::now();
-        string decoded_data = dec.decode(ptr_begin);
+        string decoded_data = dec.decode(&ptr_begin);
         auto dec_stop = chrono::high_resolution_clock::now();
         
         auto dec_time = chrono::duration_cast<chrono::microseconds>(dec_stop - dec_start);
-        // cout << "Time to decode: " << dec_time.count() << "ms" << endl;
         dec_avg_time += dec_time.count();
 
-        // cout << "Input string: " << data << endl;
-        // cout << "Decoded string: " << get<0>(decoded_data) << endl;
+        delete[] buf;
 
+        if (len < 100) {
+            cout << "\nOriginal: " << data << endl;
+            cout << "Decoded: " << decoded_data << endl;
+        }
         if (decoded_data != data) {
             printf("Decoded string does not match input.\n");
-            if (len < 100) {
-                cout << "Decoded: " << decoded_data << endl;
-                cout << "Original: " << data << endl;
-            }
             return false;
         }
     }
@@ -303,7 +302,7 @@ string read_file_to_string(const string& file_path) {
     return content;
 }
 
-void write_bitarray_to_file(uint8_t** ptr, const size_t len, const string& file_path) {
+void write_bitarray_to_file(uint8_t* ptr, const size_t len, const string& file_path) {
     ofstream file(file_path, ios::binary);
     if (!file.is_open()) {
         printf("Error: Could not open file '%s' for writing.\n", file_path.c_str());
@@ -314,9 +313,9 @@ void write_bitarray_to_file(uint8_t** ptr, const size_t len, const string& file_
     file.write(reinterpret_cast<const char*>(&num_bits), sizeof(num_bits));
     
     vector<bool> bits;
-    for (int i = 0; i < len; i++) {
-        bits.push_back(**ptr);
-        *ptr += 1;
+    for (size_t i = 0; i < len; i++) {
+        bits.push_back(*ptr);
+        ptr += 1;
     }
     
     uint64_t num_bytes = (num_bits + 7) / 8;
@@ -372,6 +371,33 @@ void write_bitarray_to_file(uint8_t** ptr, const size_t len, const string& file_
 //     return bitarray;
 // }
 
+int main_(int argc, char *argv[]) {
+    uint32_t enc_avg_time = 0;
+    uint32_t dec_avg_time = 0;
+
+    uint32_t num_iter = 100;
+    for (uint32_t i = 0; i < num_iter; i++) {
+        uint32_t enc_iter_time = 0;
+        uint32_t dec_iter_time = 0;
+        bool test_result = test_rANS(enc_iter_time, dec_iter_time);
+        if (!test_result) {
+            printf("TEST FAILED. EXITING EARLY...\n");
+            break;
+        } else {
+            enc_avg_time += enc_iter_time;
+            dec_avg_time += dec_iter_time;
+        }
+    }
+
+    enc_avg_time /= num_iter;
+    dec_avg_time /= num_iter;
+
+    cout << "Avg encode time: " << enc_avg_time << "us" << endl;
+    cout << "Avg decode time: " << dec_avg_time << "us" << endl;
+
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 3) {
         printf("Usage: %s <input_file> <output_file>\n", argv[0]);
@@ -414,12 +440,14 @@ int main(int argc, char *argv[]) {
     
     printf("Compressing %s -> %s...\n", input_file_path.c_str(), output_file_path.c_str());
     size_t len;
-    uint8_t** encoded_begin_ptr = NULL;
     auto enc_start = chrono::high_resolution_clock::now();
-    enc.encode(data, &len, encoded_begin_ptr);
+    tuple<uint8_t*, uint8_t*> ptrs = enc.encode(data, &len);
     auto enc_stop = chrono::high_resolution_clock::now();
     auto enc_time = chrono::duration_cast<chrono::milliseconds>(enc_stop - enc_start);
     printf("Compression time: %.2f seconds\n", enc_time.count() / 1000.0);
+
+    uint8_t* buf = get<0>(ptrs);
+    uint8_t* encoded_begin_ptr = get<1>(ptrs);
     
     // Write encoded bitarray to file
     write_bitarray_to_file(encoded_begin_ptr, len, output_file_path);
@@ -438,10 +466,22 @@ int main(int argc, char *argv[]) {
 
     // printf("Decompressing %s -> %s...\n", output_file_path.c_str(), output_file_path.c_str());
     auto dec_start = chrono::high_resolution_clock::now();
-    string decoded_data = dec.decode(encoded_begin_ptr);
+    string decoded_data = dec.decode(&encoded_begin_ptr);
     auto dec_stop = chrono::high_resolution_clock::now();
     auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
     printf("Decompression time: %.2f seconds\n", dec_time.count() / 1000.0);
+    delete[] buf;
     
+    // Write decoded data to a file for verification
+    string decoded_output_path = output_file_path + ".decoded";
+    ofstream decoded_out(decoded_output_path, ios::binary);
+    if (!decoded_out.is_open()) {
+        printf("Error: Could not open file '%s' for writing decoded output.\n", decoded_output_path.c_str());
+    } else {
+        decoded_out.write(decoded_data.data(), decoded_data.size());
+        decoded_out.close();
+        printf("Decoded output written to: %s\n", decoded_output_path.c_str());
+    }
+
     return 0;
 }
