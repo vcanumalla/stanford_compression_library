@@ -68,10 +68,6 @@ tuple<uint8_t*, uint8_t*, uint8_t*> encoder::encode(string data, size_t* len)
     uint32_t state0 = params.INITIAL_STATE;
     uint32_t state1 = params.INITIAL_STATE;
 
-    // Partition work just like decode()
-    size_t num0 = n / 2;             // stream0 handles odd-index symbols
-    size_t num1 = n - num0;          // stream1 handles even-index symbols
-
     // thread 0 starts at last odd index
     ssize_t start0 = (n - 1) - ((n - 1) % 2 == 1 ? 0 : 1);
 
@@ -377,7 +373,7 @@ string read_file_to_string(const string& file_path) {
     return content;
 }
 
-void write_bitarray_to_file(uint8_t* ptr, const size_t len, const string& file_path) {
+void write_bitarray_to_file(uint8_t* ptr0, uint8_t* ptr1, const size_t len, const string& file_path) {
     ofstream file(file_path, ios::binary);
     if (!file.is_open()) {
         printf("Error: Could not open file '%s' for writing.\n", file_path.c_str());
@@ -388,9 +384,14 @@ void write_bitarray_to_file(uint8_t* ptr, const size_t len, const string& file_p
     file.write(reinterpret_cast<const char*>(&num_bits), sizeof(num_bits));
     
     vector<bool> bits;
+    bool use_ptr0 = false;
     for (size_t i = 0; i < len; i++) {
-        bits.push_back(*ptr);
-        ptr += 1;
+        bits.push_back(use_ptr0 ? *ptr0 : *ptr1);
+        if (use_ptr0) {
+            ptr0++;
+        } else {
+            ptr1++;
+        }
     }
     
     uint64_t num_bytes = (num_bits + 7) / 8;
@@ -526,7 +527,7 @@ int main(int argc, char *argv[]) {
     uint8_t* encoded_begin_ptr1 = get<2>(ptrs);
     
     // Write encoded bitarray to file
-    // write_bitarray_to_file(encoded_begin_ptr0, len, output_file_path);
+    write_bitarray_to_file(encoded_begin_ptr0, encoded_begin_ptr1, len, output_file_path);
     
     // Get file sizes for compression ratio
     ifstream input_file(input_file_path, ios::binary | ios::ate);
@@ -545,6 +546,7 @@ int main(int argc, char *argv[]) {
     string decoded_data = dec.decode(&encoded_begin_ptr0, &encoded_begin_ptr1);
     auto dec_stop = chrono::high_resolution_clock::now();
     auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
+    printf("\nDecompression complete!\n");
     printf("Decompression time: %.2f seconds\n", dec_time.count() / 1000.0);
     delete[] buf;
     
