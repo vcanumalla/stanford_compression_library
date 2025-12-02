@@ -493,7 +493,7 @@ int main(int argc, char *argv[]) {
     tuple<uint8_t*, uint8_t*, uint8_t*> ptrs = enc.encode(data, &len);
     auto enc_stop = chrono::high_resolution_clock::now();
     auto enc_time = chrono::duration_cast<chrono::milliseconds>(enc_stop - enc_start);
-    printf("Compression time: %.2f seconds\n", enc_time.count() / 1000.0);
+    printf("Compression time: %.2f ms\n", enc_time.count() * 1.0);
 
     uint8_t* buf = get<0>(ptrs);
     uint8_t* encoded_begin_ptr0 = get<1>(ptrs);
@@ -521,7 +521,7 @@ int main(int argc, char *argv[]) {
     auto dec_stop = chrono::high_resolution_clock::now();
     auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
     printf("Decompression complete!\n");
-    printf("Decompression time: %.2f seconds\n", dec_time.count() / 1000.0);
+    printf("Decompression time: %.2f ms\n", dec_time.count() * 1.0);
     delete[] buf;
     
     // Write decoded data to a file for verification

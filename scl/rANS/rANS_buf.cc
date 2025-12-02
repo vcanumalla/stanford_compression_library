@@ -12,9 +12,6 @@
 #include "rANS_buf.hh"
 using namespace std;
 
-// max block size: 65536
-const uint32_t BUFFER_SIZE = 1000000;
-
 encoder::encoder(rANSParams params) : params(params) {};
 
 // == rANS base encode step ==
@@ -97,20 +94,28 @@ uint32_t decoder::find_bin(vector<uint32_t> cum_freq_list, uint32_t slot) {
 // takes current state, decodes one symbol
 // returns decoded symbol and updated (prev) state (modifies through reference)
 char decoder::base_decode_step(uint32_t& state) {
-    uint32_t block_id = state / params.M;
+    // uint32_t block_id = state / params.M;
+    // uint32_t slot = state % params.M;
+
+    // map<char, uint32_t> cum_prob_list = params.freqs.cumulative_freq_dict();
+    // vector<uint32_t> values;
+    // for (auto& kv : cum_prob_list) {
+    //     values.push_back(kv.second);
+    // }
+
+    // uint32_t symbol_bin = find_bin(values, slot);
+    // char s = params.freqs.alphabet()[symbol_bin];
+
+    // uint32_t prev_state = block_id * params.freqs.frequency(s) + slot - params.freqs.cumulative_freq_dict()[s];
+    // state = prev_state;
+    // return s;
     uint32_t slot = state % params.M;
+    const ransDecSym& ds = params.decode_table[slot];
 
-    map<char, uint32_t> cum_prob_list = params.freqs.cumulative_freq_dict();
-    vector<uint32_t> values;
-    for (auto& kv : cum_prob_list) {
-        values.push_back(kv.second);
-    }
+    char s = ds.s;
 
-    uint32_t symbol_bin = find_bin(values, slot);
-    char s = params.freqs.alphabet()[symbol_bin];
-
-    uint32_t prev_state = block_id * params.freqs.frequency(s) + slot - params.freqs.cumulative_freq_dict()[s];
-    state = prev_state;
+    uint32_t block_id = state / params.M;
+    state = block_id * ds.freq + (slot - ds.cum_freq);
     return s;
 }
 
@@ -444,7 +449,7 @@ int main(int argc, char *argv[]) {
     tuple<uint8_t*, uint8_t*> ptrs = enc.encode(data, &len);
     auto enc_stop = chrono::high_resolution_clock::now();
     auto enc_time = chrono::duration_cast<chrono::milliseconds>(enc_stop - enc_start);
-    printf("Compression time: %.2f seconds\n", enc_time.count() / 1000.0);
+    printf("Compression time: %.2f ms\n", enc_time.count() * 1.0);
 
     uint8_t* buf = get<0>(ptrs);
     uint8_t* encoded_begin_ptr = get<1>(ptrs);
@@ -469,7 +474,7 @@ int main(int argc, char *argv[]) {
     string decoded_data = dec.decode(&encoded_begin_ptr);
     auto dec_stop = chrono::high_resolution_clock::now();
     auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
-    printf("Decompression time: %.2f seconds\n", dec_time.count() / 1000.0);
+    printf("Decompression time: %.2f ms\n", dec_time.count() * 1.0);
     delete[] buf;
     
     // Write decoded data to a file for verification

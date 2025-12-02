@@ -8,6 +8,12 @@
 
 using namespace std;
 
+struct ransDecSym {
+    uint32_t freq;
+    uint32_t cum_freq;
+    char s;
+};
+
 struct Frequencies {
     Frequencies(map<char, uint32_t> freq_dict_) : freq_dict(freq_dict_) {};
 
@@ -68,6 +74,8 @@ struct rANSParams {
     uint32_t NUM_STATE_BITS;
     uint32_t BITS_OUT_MASK;
 
+    vector<ransDecSym> decode_table;
+
     rANSParams(const Frequencies &freqs_, uint32_t DATA_BLOCK_SIZE_BITS_, uint32_t RANGE_FACTOR_) : 
         freqs(freqs_), DATA_BLOCK_SIZE_BITS(DATA_BLOCK_SIZE_BITS_), RANGE_FACTOR(RANGE_FACTOR_) {
         
@@ -86,6 +94,25 @@ struct rANSParams {
         INITIAL_STATE = L;
         NUM_STATE_BITS = get_bit_width(H);
         BITS_OUT_MASK = (1u << NUM_BITS_OUT) - 1u;
+
+        decode_table.resize(M);
+
+        map<char, uint32_t> cum_freq = freqs.cumulative_freq_dict();
+        map<char, uint32_t> freq = freqs.freq_dict;
+        vector<uint32_t> alphabet = freqs.alphabet();
+
+        for (auto& kv : cum_freq) {
+            char s = kv.first;
+            uint32_t f = freq.at(s);
+            uint32_t cf = kv.second;
+            for (uint32_t i = cf; i < cf + f; i++) {
+                ransDecSym ds;
+                ds.freq = f;
+                ds.cum_freq = cf;
+                ds.s = s;
+                decode_table[i] = ds;
+            }
+        }
     }
 
 };
