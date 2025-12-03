@@ -1,5 +1,5 @@
 C++ = g++
-CFLAGS = -Wall -g -O3 -march=native
+CFLAGS = -Wall -g -O0 -march=native
 export warnflags = -Wfloat-equal -Wtype-limits -Wpointer-arith -Wlogical-op -Wshadow -Winit-self -fno-diagnostics-show-option
 TFLAGS = -pthread
 LDFLAGS =
@@ -8,7 +8,7 @@ LDLIBS =
 PROGRAMS = rANS rANS_buf rANS_thread rANS_explicit rANS_explicit_opt rANS_implicit
 
 
-build: rANS.cc rANS.hh
+default: rANS.cc rANS.hh
 	$(C++) $(CFLAGS) -o rANS rANS.cc
 
 buf: rANS_buf.cc rANS_buf.hh

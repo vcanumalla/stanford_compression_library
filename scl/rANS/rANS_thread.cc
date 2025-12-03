@@ -531,14 +531,14 @@ tuple<int, int, string> run_test(string data, string input_file_path, string out
     }
 
     // write decoded data to a file for verification
-    if (verbose) {
-        string decoded_output_path = output_file_path + ".decoded";
-        ofstream decoded_out(decoded_output_path, ios::binary);
-        if (!decoded_out.is_open()) {
-            printf("Error: Could not open file '%s' for writing decoded output.\n", decoded_output_path.c_str());
-        } else {
-            decoded_out.write(decoded_data.data(), decoded_data.size());
-            decoded_out.close();
+    string decoded_output_path = output_file_path + ".decoded";
+    ofstream decoded_out(decoded_output_path, ios::binary);
+    if (!decoded_out.is_open()) {
+        printf("Error: Could not open file '%s' for writing decoded output.\n", decoded_output_path.c_str());
+    } else {
+        decoded_out.write(decoded_data.data(), decoded_data.size());
+        decoded_out.close();
+        if (verbose) {
             printf("Decoded output written to: %s\n", decoded_output_path.c_str());
         }
     }

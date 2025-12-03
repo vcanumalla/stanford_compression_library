@@ -13,7 +13,7 @@
 using namespace std;
 
 // max block size: 65536
-const uint32_t BUFFER_SIZE = 1000000;
+const uint32_t BUFFER_SIZE = 6000000;
 
 encoder::encoder(rANSParams params) : params(params) {};
 
@@ -190,95 +190,6 @@ tuple<string, uint32_t> decoder::decode_block(BitArray& encoded_bitarray) {
 
 
 //////////////////// TESTING ////////////////////
-
-bool test_bitarray() { // DEPRECATED: encoded_bitarray does not match python implementation, because we encode in reverse direction. final decoded check still applicable
-    map<char, uint32_t> freq_dict = {
-        {'A', 3},
-        {'B', 3},
-        {'C', 2}
-    };
-    
-    Frequencies freq = Frequencies(freq_dict);
-    string data = "ACBBBCAAB";
-    rANSParams params = rANSParams(freq, 5, 1);
-
-    BitArray expected_bitarray = {};
-
-    // initial state
-    uint32_t st = 8; // state variable
-    if (params.INITIAL_STATE != 8) {
-        cout << "Initial state is not 8.\n" << endl;
-        return false;
-    }
-
-    // first symbol: A
-    // rescale state to be within [3,5]
-    st = 4;
-    expected_bitarray.push(0);
-    // encode
-    st = 9;
-
-    // second symbol: C
-    // rescale
-    st = 4;
-    expected_bitarray.push(1);
-    st = 2;
-    expected_bitarray.push(0);
-    // encode; state = (st//3)*8 + 0 + (st%3)
-    st = 14;
-
-    // third symbol: B
-    // rescale
-    st = 7;
-    expected_bitarray.push(0);
-    st = 3;
-    expected_bitarray.push(1);
-    // encode
-    st = 11;
-
-    printf("Final expected state: %d\n", st);
-
-    // add final state to bitarray
-    uint32_t num_state_bits = 4;
-    if (params.NUM_STATE_BITS != num_state_bits) {
-        cout << "Num state bits is not 4.\n" << endl;
-        return false;
-    }
-    expected_bitarray.push(1);
-    expected_bitarray.push(1);
-    expected_bitarray.push(0);
-    expected_bitarray.push(1);
-
-    // add number of symbols (3) to bitarray
-    expected_bitarray.push(1);
-    expected_bitarray.push(1);
-    expected_bitarray.push(0);
-    expected_bitarray.push(0);
-    expected_bitarray.push(0);
-    // state = 01001 1101 11000
-
-    // use encoder-decoder and check
-    encoder enc = encoder(params);
-    BitArray actual_bitarray = enc.encode(data);
-    if (actual_bitarray.size() != expected_bitarray.size()) {
-        printf("Size mismatch. Actual: %llu, Expected: %llu\n", actual_bitarray.size(), expected_bitarray.size());
-    }
-
-    cout << "actual: ";
-    actual_bitarray.print();
-    cout << "expected : ";
-    expected_bitarray.print();
-    
-    // if (!actual_bitarray.equals(expected_bitarray)) {
-    //     return false;
-    // }
-
-    decoder dec = decoder(params);
-    tuple<string,uint32_t> decoded_data = dec.decode_block(actual_bitarray);
-    cout << "Input string: " << data << endl;
-    cout << "Decoded string: " << get<0>(decoded_data) << endl;
-    return data == get<0>(decoded_data);
-}
 
 string random_string(uint32_t n, const vector<char>& alphabet) {
     static mt19937 rng(random_device{}());
@@ -482,15 +393,69 @@ BitArray read_bitarray_from_file(const string& file_path) {
     return bitarray;
 }
 
+tuple<int, int, string> run_test(string data, string input_file_path, string output_file_path, rANSParams params, bool verbose) {
+    encoder enc = encoder(params);
+    decoder dec = decoder(params);
+
+    if (verbose) {
+        printf("Compressing %s -> %s...\n", input_file_path.c_str(), output_file_path.c_str());
+    }
+    
+    auto enc_start = chrono::high_resolution_clock::now();
+    BitArray encoded_bitarray = enc.encode(data);
+    auto enc_stop = chrono::high_resolution_clock::now();
+    auto enc_time = chrono::duration_cast<chrono::milliseconds>(enc_stop - enc_start);
+
+    if (verbose) {
+        printf("Compression time: %.2f ms\n", enc_time.count() * 1.0);
+    }
+    
+    // Write encoded bitarray to file
+    write_bitarray_to_file(encoded_bitarray, output_file_path);
+    
+    // Get file sizes for compression ratio
+    if (verbose) {
+        ifstream input_file(input_file_path, ios::binary | ios::ate);
+        ifstream output_file(output_file_path, ios::binary | ios::ate);
+        size_t input_size = input_file.tellg();
+        size_t output_size = output_file.tellg();
+        double compression_ratio = output_size > 0 ? (double)input_size / output_size : 0.0;
+        
+        printf("\nCompression complete!\n");
+        printf("Input size:  %zu bytes\n", input_size);
+        printf("Output size: %zu bytes\n", output_size);
+        printf("Compression ratio: %.2fx\n", compression_ratio);
+    }
+    
+    auto dec_start = chrono::high_resolution_clock::now();
+    tuple<string, uint8_t> decoded = dec.decode_block(encoded_bitarray);
+    auto dec_stop = chrono::high_resolution_clock::now();
+    auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
+
+    if (verbose) {
+        printf("Decompression time: %.2f ms\n", dec_time.count() * 1.0);
+    }
+
+    string decoded_data = get<0>(decoded);
+    
+    // Write decoded data to a file for verification
+    string decoded_output_path = output_file_path + ".decoded";
+    ofstream decoded_out(decoded_output_path, ios::binary);
+    if (!decoded_out.is_open()) {
+        printf("Error: Could not open file '%s' for writing decoded output.\n", decoded_output_path.c_str());
+    } else {
+        decoded_out.write(decoded_data.data(), decoded_data.size());
+        decoded_out.close();
+        if (verbose) {
+            printf("Decoded output written to: %s\n", decoded_output_path.c_str());
+        }
+    }
+    
+    tuple<int, int, string> ret_tup = tuple<int, int, string>{enc_time.count(), dec_time.count(), decoded_data};
+    return ret_tup;
+}
+
 int main(int argc, char *argv[]) {
-    // bool ret_val = test_bitarray();
-    // if(ret_val) {
-    //     printf("Success!\n");
-    // } else {
-    //     printf("Mismatch.\n");
-    // }
-
-
     if (argc != 3) {
         printf("Usage: %s <input_file> <output_file>\n", argv[0]);
         return 1;
@@ -529,28 +494,64 @@ int main(int argc, char *argv[]) {
         printf("Error: Failed to read input file.\n");
         return 1;
     }
+
+    printf("Running test...\n");
+    auto enc_avg_time = 0;
+    auto dec_avg_time = 0;
+    size_t num_iter = 1;
+    for (size_t i = 0; i < num_iter; i++) {
+        tuple<int, int, string> ret_val = run_test(data, input_file_path, output_file_path, params, true);
+        enc_avg_time += get<0>(ret_val);
+        dec_avg_time += get<1>(ret_val);
+    }
+
+    enc_avg_time /= num_iter;
+    dec_avg_time /= num_iter;
+
+    printf("\n=====================================");
+    printf("\nDone with %zu test iterations. Timed results:", num_iter);
+    printf("\nAvg compression time: %.2f ms\n", enc_avg_time * 1.0);
+    printf("Avg decompression time: %.2f ms\n", dec_avg_time * 1.0);
     
-    printf("Compressing %s -> %s...\n", input_file_path.c_str(), output_file_path.c_str());
-    auto enc_start = chrono::high_resolution_clock::now();
-    BitArray encoded_bitarray = enc.encode(data);
-    auto enc_stop = chrono::high_resolution_clock::now();
-    auto enc_time = chrono::duration_cast<chrono::milliseconds>(enc_stop - enc_start);
-    printf("Compression time: %.2f seconds\n", enc_time.count() / 1000.0);
-    
-    // Write encoded bitarray to file
-    write_bitarray_to_file(encoded_bitarray, output_file_path);
-    
-    // Get file sizes for compression ratio
-    ifstream input_file(input_file_path, ios::binary | ios::ate);
-    ifstream output_file(output_file_path, ios::binary | ios::ate);
-    size_t input_size = input_file.tellg();
-    size_t output_size = output_file.tellg();
-    double compression_ratio = output_size > 0 ? (double)input_size / output_size : 0.0;
-    
-    printf("\nCompression complete!\n");
-    printf("Input size:  %zu bytes\n", input_size);
-    printf("Output size: %zu bytes\n", output_size);
-    printf("Compression ratio: %.2fx\n", compression_ratio);
+    // verify decoded file matches original
+    string decoded_output_path = output_file_path + ".decoded";
+    ifstream original_file(input_file_path, ios::binary);
+    ifstream decoded_file(decoded_output_path, ios::binary);
+
+    if (!original_file.is_open() || !decoded_file.is_open()) {
+        std::cerr << "Error opening files.\n";
+        return false;
+    }
+
+    // check file size for early fail
+    original_file.seekg(0, ios::end);
+    decoded_file.seekg(0, ios::end);
+    streamsize size1 = original_file.tellg();
+    streamsize size2 = decoded_file.tellg();
+    if (size1 != size2) {
+        return false;
+    }
+    original_file.seekg(0);
+    decoded_file.seekg(0);
+
+    // Compare contents in blocks
+    size_t bufferSize = 4096;
+    vector<char> buffer1(bufferSize);
+    vector<char> buffer2(bufferSize);
+
+    while (original_file && decoded_file) {
+        original_file.read(buffer1.data(), bufferSize);
+        decoded_file.read(buffer2.data(), bufferSize);
+
+        streamsize bytesRead1 = original_file.gcount();
+        streamsize bytesRead2 = decoded_file.gcount();
+
+        if (bytesRead1 != bytesRead2) return false;
+        if (!equal(buffer1.begin(), buffer1.begin() + bytesRead1, buffer2.begin())) {
+            printf("Error: mismatch in decoded output and original file.\n");
+            return 1;
+        }
+    }
     
     return 0;
 }
