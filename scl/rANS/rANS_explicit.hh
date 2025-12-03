@@ -5,8 +5,8 @@
 #include <map>
 #include <array>
 #include <bitset>
+#include <thread>
 
-#include "BitArray.hh"
 using namespace std;
 
 struct Frequencies {
@@ -54,7 +54,7 @@ uint32_t get_bit_width(uint32_t x) {
 struct rANSParams {
     Frequencies freqs;
     uint32_t DATA_BLOCK_SIZE_BITS = 32;
-    uint32_t NUM_BITS_OUT = 1u; // hardcoded to work with NUM_BITS_OUT=1
+    uint32_t NUM_BITS_OUT = 8u; // one byte at a time
     uint32_t RANGE_FACTOR = 1u << 16;
 
     uint32_t M, L, H;
@@ -94,14 +94,13 @@ struct rANSParams {
 class encoder {
     private:
         rANSParams params;
-        uint32_t base_encode_step(char s, uint32_t state);
-        void shrink_state(uint32_t& state, char next_symbol, BitArray& bitarray);
-        void encode_symbol(uint32_t& state, char next_symbol, BitArray& bitarray);
+        inline void base_encode_step(char s, uint32_t& state);
+        inline void shrink_state(uint32_t& state, char next_symbol, uint8_t** ptr);
+        void encode_symbol(uint32_t& state, char next_symbol, uint8_t** ptr);
 
     public:
         encoder(rANSParams rans_params);
-        void encode_block(char** buf, size_t len, BitArray& out_stream);
-        BitArray encode(string data);
+        tuple<uint8_t*, uint8_t*, uint8_t*> encode(string data, size_t* len);
 };
 
 class decoder {
@@ -109,10 +108,10 @@ class decoder {
         rANSParams params;
         uint32_t find_bin(vector<uint32_t> cum_freq_list, uint32_t slot);
         char base_decode_step(uint32_t& state);
-        uint32_t expand_state(uint32_t& state, BitArray& encoded_bitarray);
-        tuple<char, uint32_t> decode_symbol(uint32_t& state, BitArray& encoded_bitarray);
+        inline void expand_state(uint32_t& state, uint8_t** ptr);
+        char decode_symbol(uint32_t& state, uint8_t** ptr);
 
     public:
         decoder(rANSParams rans_params);
-        tuple<string, uint32_t> decode_block(BitArray& encoded_bitarray);
+        string decode(uint8_t** ptr0, uint8_t** ptr1);
 };

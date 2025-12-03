@@ -5,9 +5,15 @@
 #include <map>
 #include <array>
 #include <bitset>
+#include <thread>
 
-#include "BitArray.hh"
 using namespace std;
+
+struct ransDecSym {
+    uint32_t freq;
+    uint32_t cum_freq;
+    char s;
+};
 
 struct Frequencies {
     Frequencies(map<char, uint32_t> freq_dict_) : freq_dict(freq_dict_) {};
@@ -54,7 +60,7 @@ uint32_t get_bit_width(uint32_t x) {
 struct rANSParams {
     Frequencies freqs;
     uint32_t DATA_BLOCK_SIZE_BITS = 32;
-    uint32_t NUM_BITS_OUT = 1u; // hardcoded to work with NUM_BITS_OUT=1
+    uint32_t NUM_BITS_OUT = 8u; // one byte at a time
     uint32_t RANGE_FACTOR = 1u << 16;
 
     uint32_t M, L, H;
@@ -68,6 +74,8 @@ struct rANSParams {
     uint32_t INITIAL_STATE;
     uint32_t NUM_STATE_BITS;
     uint32_t BITS_OUT_MASK;
+
+    vector<ransDecSym> decode_table;
 
     rANSParams(const Frequencies &freqs_, uint32_t DATA_BLOCK_SIZE_BITS_, uint32_t RANGE_FACTOR_) : 
         freqs(freqs_), DATA_BLOCK_SIZE_BITS(DATA_BLOCK_SIZE_BITS_), RANGE_FACTOR(RANGE_FACTOR_) {
@@ -87,32 +95,54 @@ struct rANSParams {
         INITIAL_STATE = L;
         NUM_STATE_BITS = get_bit_width(H);
         BITS_OUT_MASK = (1u << NUM_BITS_OUT) - 1u;
+
+        decode_table.resize(M);
+
+        map<char, uint32_t> cum_freq = freqs.cumulative_freq_dict();
+        map<char, uint32_t> freq = freqs.freq_dict;
+        vector<uint32_t> alphabet = freqs.alphabet();
+
+        for (auto& kv : cum_freq) {
+            char s = kv.first;
+            uint32_t f = freq.at(s);
+            uint32_t cf = kv.second;
+            for (uint32_t i = cf; i < cf + f; i++) {
+                ransDecSym ds;
+                ds.freq = f;
+                ds.cum_freq = cf;
+                ds.s = s;
+                decode_table[i] = ds;
+            }
+        }
     }
 
 };
 
 class encoder {
     private:
+        uint32_t state0;
+        uint32_t state1;
         rANSParams params;
-        uint32_t base_encode_step(char s, uint32_t state);
-        void shrink_state(uint32_t& state, char next_symbol, BitArray& bitarray);
-        void encode_symbol(uint32_t& state, char next_symbol, BitArray& bitarray);
+        inline void base_encode_step(char s, uint32_t& state);
+        inline void shrink_state(uint32_t& state, char next_symbol, uint8_t** ptr);
+        void encode_symbol(char next_symbol, uint8_t** ptr);
 
     public:
         encoder(rANSParams rans_params);
-        void encode_block(char** buf, size_t len, BitArray& out_stream);
-        BitArray encode(string data);
+        tuple<uint8_t*, uint8_t*> encode(string data, size_t* len);
 };
 
 class decoder {
     private:
+        uint32_t state0;
+        uint32_t state1;
         rANSParams params;
         uint32_t find_bin(vector<uint32_t> cum_freq_list, uint32_t slot);
         char base_decode_step(uint32_t& state);
-        uint32_t expand_state(uint32_t& state, BitArray& encoded_bitarray);
-        tuple<char, uint32_t> decode_symbol(uint32_t& state, BitArray& encoded_bitarray);
+        inline void expand_state(uint32_t& state, uint8_t** ptr);
+        char decode_symbol(uint8_t** ptr);
 
     public:
         decoder(rANSParams rans_params);
-        tuple<string, uint32_t> decode_block(BitArray& encoded_bitarray);
+        string decode(uint8_t** ptr0);
 };

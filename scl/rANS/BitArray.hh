@@ -8,6 +8,8 @@
 
 // note: using custom class to encode bitarrays, operations done on bitarrays will use bitwise operations
 
+#include <vector>
+
 using namespace std;
 
 class BitArray {
@@ -95,5 +97,9 @@ class BitArray {
 
         bool isempty() {
             return data.empty() || bit_ptr == -1; // redundant checks
+        }
+
+        void concatenate(vector<uint8_t>& data2) {
+            data.insert(data.end(), data2.begin(), data2.end());
         }
 };
