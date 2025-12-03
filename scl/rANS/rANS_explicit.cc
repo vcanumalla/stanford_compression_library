@@ -429,6 +429,73 @@ int main_(int argc, char *argv[]) {
     return 0;
 }
 
+tuple<int, int, string> run_test(string data, string input_file_path, string output_file_path, rANSParams params, bool verbose) {
+    encoder enc = encoder(params);
+    decoder dec = decoder(params);
+    size_t len;
+
+    if (verbose) {
+        printf("Compressing %s -> %s...\n", input_file_path.c_str(), output_file_path.c_str());
+    }
+    
+    auto enc_start = chrono::high_resolution_clock::now();
+    tuple<uint8_t*, uint8_t*, uint8_t*> ptrs = enc.encode(data, &len);
+    auto enc_stop = chrono::high_resolution_clock::now();
+    auto enc_time = chrono::duration_cast<chrono::milliseconds>(enc_stop - enc_start);
+    if (verbose) {
+        printf("Compression time: %.2f ms\n", enc_time.count() * 1.0);
+    }
+
+    uint8_t* buf = get<0>(ptrs);
+    uint8_t* encoded_begin_ptr0 = get<1>(ptrs);
+    uint8_t* encoded_begin_ptr1 = get<2>(ptrs);
+    
+    // Write encoded bitarray to file
+    write_bitarray_to_file(encoded_begin_ptr0, encoded_begin_ptr1, len, output_file_path);
+    
+    // Get file sizes for compression ratio
+    if (verbose) {
+        ifstream input_file(input_file_path, ios::binary | ios::ate);
+        ifstream output_file(output_file_path, ios::binary | ios::ate);
+        size_t input_size = input_file.tellg();
+        size_t output_size = output_file.tellg();
+        double compression_ratio = output_size > 0 ? (double)input_size / output_size : 0.0;
+
+        printf("\nCompression complete!\n");
+        printf("Input size:  %zu bytes\n", input_size);
+        printf("Output size: %zu bytes\n", output_size);
+        printf("Compression ratio: %.2fx\n", compression_ratio);
+    }
+    
+    auto dec_start = chrono::high_resolution_clock::now();
+    string decoded_data = dec.decode(&encoded_begin_ptr0, &encoded_begin_ptr1);
+    auto dec_stop = chrono::high_resolution_clock::now();
+    auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
+
+    if (verbose) {
+        printf("\nDecompression complete!\n");
+        printf("Decompression time: %.2f ms\n", dec_time.count() * 1.0);
+    }
+
+    // write decoded data to a file for verification
+    if (verbose) {
+        string decoded_output_path = output_file_path + ".decoded";
+        ofstream decoded_out(decoded_output_path, ios::binary);
+        if (!decoded_out.is_open()) {
+            printf("Error: Could not open file '%s' for writing decoded output.\n", decoded_output_path.c_str());
+        } else {
+            decoded_out.write(decoded_data.data(), decoded_data.size());
+            decoded_out.close();
+            printf("Decoded output written to: %s\n", decoded_output_path.c_str());
+        }
+    }
+
+    delete[] buf;
+
+    tuple<int, int, string> ret_tup = tuple<int, int, string>{enc_time.count(), dec_time.count(), decoded_data};
+    return ret_tup;
+}
+
 int main(int argc, char *argv[]) {
     if (argc != 3) {
         printf("Usage: %s <input_file> <output_file>\n", argv[0]);
@@ -468,53 +535,72 @@ int main(int argc, char *argv[]) {
         printf("Error: Failed to read input file.\n");
         return 1;
     }
-    
-    printf("Compressing %s -> %s...\n", input_file_path.c_str(), output_file_path.c_str());
-    size_t len;
-    auto enc_start = chrono::high_resolution_clock::now();
-    tuple<uint8_t*, uint8_t*, uint8_t*> ptrs = enc.encode(data, &len);
-    auto enc_stop = chrono::high_resolution_clock::now();
-    auto enc_time = chrono::duration_cast<chrono::milliseconds>(enc_stop - enc_start);
-    printf("Compression time: %.2f seconds\n", enc_time.count() / 1000.0);
 
-    uint8_t* buf = get<0>(ptrs);
-    uint8_t* encoded_begin_ptr0 = get<1>(ptrs);
-    uint8_t* encoded_begin_ptr1 = get<2>(ptrs);
-    
-    // Write encoded bitarray to file
-    write_bitarray_to_file(encoded_begin_ptr0, encoded_begin_ptr1, len, output_file_path);
-    
-    // Get file sizes for compression ratio
-    ifstream input_file(input_file_path, ios::binary | ios::ate);
-    ifstream output_file(output_file_path, ios::binary | ios::ate);
-    size_t input_size = input_file.tellg();
-    size_t output_size = output_file.tellg();
-    double compression_ratio = output_size > 0 ? (double)input_size / output_size : 0.0;
-    
-    printf("\nCompression complete!\n");
-    printf("Input size:  %zu bytes\n", input_size);
-    printf("Output size: %zu bytes\n", output_size);
-    printf("Compression ratio: %.2fx\n", compression_ratio);
-
-    // printf("Decompressing %s -> %s...\n", output_file_path.c_str(), output_file_path.c_str());
-    auto dec_start = chrono::high_resolution_clock::now();
-    string decoded_data = dec.decode(&encoded_begin_ptr0, &encoded_begin_ptr1);
-    auto dec_stop = chrono::high_resolution_clock::now();
-    auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
-    printf("\nDecompression complete!\n");
-    printf("Decompression time: %.2f seconds\n", dec_time.count() / 1000.0);
-    delete[] buf;
-    
-    // Write decoded data to a file for verification
-    string decoded_output_path = output_file_path + ".decoded";
-    ofstream decoded_out(decoded_output_path, ios::binary);
-    if (!decoded_out.is_open()) {
-        printf("Error: Could not open file '%s' for writing decoded output.\n", decoded_output_path.c_str());
-    } else {
-        decoded_out.write(decoded_data.data(), decoded_data.size());
-        decoded_out.close();
-        printf("Decoded output written to: %s\n", decoded_output_path.c_str());
+    printf("Running test...\n");
+    auto enc_avg_time = 0;
+    auto dec_avg_time = 0;
+    size_t num_iter = 10;
+    for (size_t i = 0; i < num_iter; i++) {
+        tuple<int, int, string> ret_val = run_test(data, input_file_path, output_file_path, params, false);
+        enc_avg_time += get<0>(ret_val);
+        dec_avg_time += get<1>(ret_val);
     }
+
+    enc_avg_time /= num_iter;
+    dec_avg_time /= num_iter;
+
+    printf("\n=====================================");
+    printf("\nDone with %zu test iterations. Timed results:", num_iter);
+    printf("\nAvg compression time: %.2f ms\n", enc_avg_time * 1.0);
+    printf("Avg decompression time: %.2f ms\n", dec_avg_time * 1.0);
+
+    
+    // printf("Compressing %s -> %s...\n", input_file_path.c_str(), output_file_path.c_str());
+    // size_t len;
+    // auto enc_start = chrono::high_resolution_clock::now();
+    // tuple<uint8_t*, uint8_t*, uint8_t*> ptrs = enc.encode(data, &len);
+    // auto enc_stop = chrono::high_resolution_clock::now();
+    // auto enc_time = chrono::duration_cast<chrono::milliseconds>(enc_stop - enc_start);
+    // printf("Compression time: %.2f ms\n", enc_time.count() * 1.0);
+
+    // uint8_t* buf = get<0>(ptrs);
+    // uint8_t* encoded_begin_ptr0 = get<1>(ptrs);
+    // uint8_t* encoded_begin_ptr1 = get<2>(ptrs);
+    
+    // // Write encoded bitarray to file
+    // write_bitarray_to_file(encoded_begin_ptr0, encoded_begin_ptr1, len, output_file_path);
+    
+    // // Get file sizes for compression ratio
+    // ifstream input_file(input_file_path, ios::binary | ios::ate);
+    // ifstream output_file(output_file_path, ios::binary | ios::ate);
+    // size_t input_size = input_file.tellg();
+    // size_t output_size = output_file.tellg();
+    // double compression_ratio = output_size > 0 ? (double)input_size / output_size : 0.0;
+    
+    // printf("\nCompression complete!\n");
+    // printf("Input size:  %zu bytes\n", input_size);
+    // printf("Output size: %zu bytes\n", output_size);
+    // printf("Compression ratio: %.2fx\n", compression_ratio);
+
+    // // printf("Decompressing %s -> %s...\n", output_file_path.c_str(), output_file_path.c_str());
+    // auto dec_start = chrono::high_resolution_clock::now();
+    // string decoded_data = dec.decode(&encoded_begin_ptr0, &encoded_begin_ptr1);
+    // auto dec_stop = chrono::high_resolution_clock::now();
+    // auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
+    // printf("\nDecompression complete!\n");
+    // printf("Decompression time: %.2f ms\n", dec_time.count() * 1.0);
+    // delete[] buf;
+    
+    // // Write decoded data to a file for verification
+    // string decoded_output_path = output_file_path + ".decoded";
+    // ofstream decoded_out(decoded_output_path, ios::binary);
+    // if (!decoded_out.is_open()) {
+    //     printf("Error: Could not open file '%s' for writing decoded output.\n", decoded_output_path.c_str());
+    // } else {
+    //     decoded_out.write(decoded_data.data(), decoded_data.size());
+    //     decoded_out.close();
+    //     printf("Decoded output written to: %s\n", decoded_output_path.c_str());
+    // }
 
     return 0;
 }

@@ -5,7 +5,7 @@ TFLAGS = -pthread
 LDFLAGS =
 LDLIBS =
 
-PROGRAMS = rANS rANS_buf rANS_thread rANS_explicit rANS_explicit_opt
+PROGRAMS = rANS rANS_buf rANS_thread rANS_explicit rANS_explicit_opt rANS_implicit
 
 
 build: rANS.cc rANS.hh
