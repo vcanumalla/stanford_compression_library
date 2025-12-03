@@ -7,6 +7,7 @@ LDLIBS =
 
 PROGRAMS = rANS rANS_buf rANS_thread rANS_explicit rANS_explicit_opt rANS_implicit
 
+all: default buf thread explicit explicit_opt implicit
 
 default: rANS.cc rANS.hh
 	$(C++) $(CFLAGS) -o rANS rANS.cc
