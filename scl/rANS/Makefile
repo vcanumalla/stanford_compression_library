@@ -28,7 +28,7 @@ implicit: rANS_implicit.cc rANS_implicit.hh
 	$(C++) $(CFLAGS) $(TFLAGS) -o rANS_implicit rANS_implicit.cc 
 
 clean::
-	rm -f $(PROGRAMS) *.o *.decoded *tmp*
+	rm -rf $(PROGRAMS) *.o *.decoded *tmp* *.dSYM
 
 .PHONY: clean all
 
