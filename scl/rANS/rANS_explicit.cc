@@ -347,6 +347,7 @@ void write_bitarray_to_file(uint8_t* ptr0, uint8_t* ptr1, const size_t len, cons
         } else {
             ptr1++;
         }
+        use_ptr0 = !use_ptr0;  // Toggle between ptr0 and ptr1
     }
     
     uint64_t num_bytes = (num_bits + 7) / 8;
@@ -362,71 +363,6 @@ void write_bitarray_to_file(uint8_t* ptr0, uint8_t* ptr1, const size_t len, cons
         }
         file.write(reinterpret_cast<const char*>(&byte), sizeof(byte));
     }
-}
-
-// Helper function to read BitArray from file
-// BitArray read_bitarray_from_file(const string& file_path) {
-//     ifstream file(file_path, ios::binary);
-//     if (!file.is_open()) {
-//         printf("Error: Could not open file '%s' for reading.\n", file_path.c_str());
-//         return BitArray();
-//     }
-    
-//     // Read the size (number of bits)
-//     uint64_t num_bits;
-//     file.read(reinterpret_cast<char*>(&num_bits), sizeof(num_bits));
-    
-//     // Read bytes and convert to bits
-//     BitArray bitarray;
-//     uint64_t num_bytes = (num_bits + 7) / 8;
-//     vector<bool> bits;
-    
-//     // Read all bytes and extract bits
-//     for (uint64_t i = 0; i < num_bytes; i++) {
-//         uint8_t byte;
-//         file.read(reinterpret_cast<char*>(&byte), sizeof(byte));
-        
-//         int bits_in_byte = (i == num_bytes - 1 && num_bits % 8 != 0) ? (num_bits % 8) : 8;
-//         for (int j = 0; j < bits_in_byte; j++) {
-//             bool bit = (byte >> j) & 1u;
-//             bits.push_back(bit);
-//         }
-//     }
-    
-//     // Push bits in reverse order (since BitArray is a stack)
-//     // The last bit read should be the first popped
-//     for (int i = bits.size() - 1; i >= 0; i--) {
-//         bitarray.push(bits[i]);
-//     }
-    
-//     return bitarray;
-// }
-
-int main_(int argc, char *argv[]) {
-    uint32_t enc_avg_time = 0;
-    uint32_t dec_avg_time = 0;
-
-    uint32_t num_iter = 100;
-    for (uint32_t i = 0; i < num_iter; i++) {
-        uint32_t enc_iter_time = 0;
-        uint32_t dec_iter_time = 0;
-        bool test_result = test_rANS(enc_iter_time, dec_iter_time);
-        if (!test_result) {
-            printf("TEST FAILED. EXITING EARLY...\n");
-            break;
-        } else {
-            enc_avg_time += enc_iter_time;
-            dec_avg_time += dec_iter_time;
-        }
-    }
-
-    enc_avg_time /= num_iter;
-    dec_avg_time /= num_iter;
-
-    cout << "Avg encode time: " << enc_avg_time << "us" << endl;
-    cout << "Avg decode time: " << dec_avg_time << "us" << endl;
-
-    return 0;
 }
 
 tuple<int, int, string> run_test(string data, string input_file_path, string output_file_path, rANSParams params, bool verbose) {
@@ -450,6 +386,10 @@ tuple<int, int, string> run_test(string data, string input_file_path, string out
     uint8_t* encoded_begin_ptr0 = get<1>(ptrs);
     uint8_t* encoded_begin_ptr1 = get<2>(ptrs);
     
+    // Save copies of pointers before writing (write_bitarray_to_file modifies them)
+    uint8_t* decode_ptr0 = encoded_begin_ptr0;
+    uint8_t* decode_ptr1 = encoded_begin_ptr1;
+    
     // Write encoded bitarray to file
     write_bitarray_to_file(encoded_begin_ptr0, encoded_begin_ptr1, len, output_file_path);
     
@@ -468,7 +408,7 @@ tuple<int, int, string> run_test(string data, string input_file_path, string out
     }
     
     auto dec_start = chrono::high_resolution_clock::now();
-    string decoded_data = dec.decode(&encoded_begin_ptr0, &encoded_begin_ptr1);
+    string decoded_data = dec.decode(&decode_ptr0, &decode_ptr1);
     auto dec_stop = chrono::high_resolution_clock::now();
     auto dec_time = chrono::duration_cast<chrono::milliseconds>(dec_stop - dec_start);
 
@@ -497,9 +437,14 @@ tuple<int, int, string> run_test(string data, string input_file_path, string out
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 3) {
-        printf("Usage: %s <input_file> <output_file>\n", argv[0]);
+    if (argc <= 2) {
+        printf("Usage: %s <input_file> <output_file> [--eval]\n", argv[0]);
         return 1;
+    }
+
+    bool eval_mode = false;
+    for (int i = 1; i < argc; i++) {
+        if (string(argv[i]) == "--eval") eval_mode = true;
     }
 
     string input_file_path = argv[1];
@@ -509,39 +454,46 @@ int main(int argc, char *argv[]) {
         printf("Error: Input file '%s' does not exist.\n", input_file_path.c_str());
         return 1;
     }
-    
-    printf("Computing frequencies from %s...\n", input_file_path.c_str());
-    Frequencies freqs = compute_frequencies_from_file(input_file_path);
-    printf("Found %zu unique characters\n", freqs.size());
-    
-    // output the list of keys to txt (in sorted order, matching Python)
-    ofstream freq_file("freqs_c.txt");
-    for (const auto& kv : freqs.freq_dict) {
-        freq_file << kv.first << endl;
+
+    if (!eval_mode) {
+        printf("Computing frequencies from %s...\n", input_file_path.c_str());
     }
+    Frequencies freqs = compute_frequencies_from_file(input_file_path);
+
+    if (!eval_mode) {
+        printf("Found %zu unique characters\n", freqs.size());
+    }
+
+    ofstream freq_file("freqs_c.txt");
+    for (const auto& kv : freqs.freq_dict) freq_file << kv.first << endl;
     freq_file.close();
-    printf("Total characters: %u\n", freqs.total_freq());
-    
-    printf("Creating rANS encoder/decoder...\n");
+
+    if (!eval_mode) {
+        printf("Total characters: %u\n", freqs.total_freq());
+        printf("Creating rANS encoder/decoder...\n");
+    }
+
     rANSParams params = rANSParams(freqs, 32, 1);
-    
-    encoder enc = encoder(params);
-    decoder dec = decoder(params);
-    
-    // Read the entire input file into a string
-    printf("Reading input file...\n");
+
+    encoder enc(params);
+    decoder dec(params);
+
+    if (!eval_mode) printf("Reading input file...\n");
     string data = read_file_to_string(input_file_path);
     if (data.empty()) {
         printf("Error: Failed to read input file.\n");
         return 1;
     }
 
-    printf("Running test...\n");
+    if (!eval_mode) printf("Running test...\n");
+
     auto enc_avg_time = 0;
     auto dec_avg_time = 0;
-    size_t num_iter = 10;
+    size_t num_iter = 1;
+
     for (size_t i = 0; i < num_iter; i++) {
-        tuple<int, int, string> ret_val = run_test(data, input_file_path, output_file_path, params, false);
+        tuple<int, int, string> ret_val =
+            run_test(data, input_file_path, output_file_path, params, !eval_mode);
         enc_avg_time += get<0>(ret_val);
         dec_avg_time += get<1>(ret_val);
     }
@@ -549,10 +501,74 @@ int main(int argc, char *argv[]) {
     enc_avg_time /= num_iter;
     dec_avg_time /= num_iter;
 
+    // verify decoded file matches original
+    string decoded_output_path = output_file_path + ".decoded";
+    ifstream original_file(input_file_path, ios::binary);
+    ifstream decoded_file(decoded_output_path, ios::binary);
+
+    if (!original_file.is_open() || !decoded_file.is_open()) {
+        std::cerr << "Error opening files.\n";
+        return 1;
+    }
+
+    original_file.seekg(0, ios::end);
+    decoded_file.seekg(0, ios::end);
+    streamsize size1 = original_file.tellg();
+    streamsize size2 = decoded_file.tellg();
+
+    bool verified = (size1 == size2);
+
+    // compare byte-by-byte
+    original_file.seekg(0);
+    decoded_file.seekg(0);
+    vector<char> buf1(4096), buf2(4096);
+
+    while (verified && original_file && decoded_file) {
+        original_file.read(buf1.data(), buf1.size());
+        decoded_file.read(buf2.data(), buf2.size());
+
+        if (original_file.gcount() != decoded_file.gcount()) {
+            verified = false;
+            break;
+        }
+        if (!equal(buf1.begin(), buf1.begin() + original_file.gcount(), buf2.begin())) {
+            verified = false;
+            break;
+        }
+    }
+    // eval mode, should only be used when running through python script.
+    if (eval_mode) {
+        string eval_output_path = output_file_path + ".out.json";
+        ofstream eval_out(eval_output_path);
+        if (!eval_out.is_open()) {
+            cerr << "Error: Failed to open eval output file: "
+                << eval_output_path << endl;
+            return 1;
+        }
+        eval_out << "{\n";
+        eval_out << "  \"input_file\": \"" << input_file_path << "\",\n";
+        eval_out << "  \"output_file\": \"" << output_file_path << "\",\n";
+        eval_out << "  \"unique_chars\": " << freqs.size() << ",\n";
+        eval_out << "  \"total_chars\": " << freqs.total_freq() << ",\n";
+        eval_out << "  \"avg_compression_time_ms\": " << enc_avg_time << ",\n";
+        eval_out << "  \"avg_decompression_time_ms\": " << dec_avg_time << ",\n";
+        eval_out << "  \"file_size_bytes\": " << size1 << ",\n";
+        eval_out << "  \"compressed_size_bytes\": " << size2 << ",\n";
+        eval_out << "  \"compression_ratio\": " 
+             << (double)size1 / (double)(size2 > 0 ? size2 : 1) << ",\n";
+        eval_out << "  \"verified\": " << (verified ? "true" : "false") << "\n";
+        eval_out << "}\n";
+        return 0;
+    }
+
     printf("\n=====================================");
     printf("\nDone with %zu test iterations. Timed results:", num_iter);
     printf("\nAvg compression time: %.2f ms\n", enc_avg_time * 1.0);
     printf("Avg decompression time: %.2f ms\n", dec_avg_time * 1.0);
+
+    if (!verified) {
+        printf("Error: mismatch in decoded output and original file.\n");
+    }
 
     return 0;
 }
