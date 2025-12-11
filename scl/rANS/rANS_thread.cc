@@ -1,4 +1,4 @@
-// C++ Implementation of the rANS encoder
+// C++ Implementation of the rANS compressor, with multithreading support on encode and decoder
 #include <cstdint>
 #include <vector>
 #include <algorithm>
@@ -312,6 +312,7 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
     dec_avg_time /= 3;
     return true;
 }
+
 Frequencies compute_frequencies_from_file(string file_path) {
     map<char, uint32_t> freq_dict;
     ifstream file(file_path);
