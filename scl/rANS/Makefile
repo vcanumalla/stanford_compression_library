@@ -2,8 +2,6 @@ C++ = g++
 CFLAGS = -Wall -g -O0 -march=native
 export warnflags = -Wfloat-equal -Wtype-limits -Wpointer-arith -Wlogical-op -Wshadow -Winit-self -fno-diagnostics-show-option
 TFLAGS = -pthread
-LDFLAGS =
-LDLIBS =
 
 PROGRAMS = rANS rANS_buf rANS_thread rANS_explicit rANS_explicit_opt rANS_implicit
 
@@ -30,6 +28,4 @@ implicit: rANS_implicit.cc rANS_implicit.hh
 clean::
 	rm -rf $(PROGRAMS) *.o *.decoded *tmp* *.dSYM
 
-.PHONY: clean all
-
-.INTERMEDIATE: $(SOURCES:%=%.o)
+.PHONY: clean

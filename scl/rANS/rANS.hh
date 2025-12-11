@@ -1,3 +1,4 @@
+// C++ header/util file for rANS base implementation
 #include <string>
 #include <iostream>
 #include <tuple>
@@ -10,7 +11,7 @@
 using namespace std;
 
 struct Frequencies {
-    Frequencies(map<char, uint32_t> freq_dict_) : freq_dict(freq_dict_) {};
+    Frequencies(map<char, uint32_t> freq_dict_) : freq_dict(freq_dict_) {}
 
     map<char, uint32_t> freq_dict;
 

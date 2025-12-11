@@ -15,7 +15,7 @@ using namespace std;
 // max block size: 65536
 const uint32_t BUFFER_SIZE = 1000000;
 
-encoder::encoder(rANSParams params) : params(params) {};
+encoder::encoder(rANSParams params) : params(params) {}
 
 // == rANS base encode step ==
 // take current state, new symbol s (represented as a char), updates state based on rANS algorithm
@@ -54,7 +54,7 @@ void encoder::encode_half(const string& data, size_t start_idx, size_t step,uint
     }
 }
 
-
+// == rANS encode default function ==
 tuple<uint8_t*, uint8_t*, uint8_t*> encoder::encode(string data, size_t* len)
 {
     size_t n = data.size();
@@ -110,9 +110,7 @@ tuple<uint8_t*, uint8_t*, uint8_t*> encoder::encode(string data, size_t* len)
 }
 
 
-
-
-decoder::decoder(rANSParams params) : params(params) {};
+decoder::decoder(rANSParams params) : params(params) {}
 
 // == rANS find bin ==
 // takes a cumulative frequency list and a slot (integer), and finds which bin it lies in
@@ -126,21 +124,6 @@ uint32_t decoder::find_bin(vector<uint32_t> cum_freq_list, uint32_t slot) {
 // takes current state, decodes one symbol
 // returns decoded symbol and updated (prev) state (modifies through reference)
 char decoder::base_decode_step(uint32_t& state) {
-    // uint32_t block_id = state / params.M;
-    // uint32_t slot = state % params.M;
-
-    // map<char, uint32_t> cum_prob_list = params.freqs.cumulative_freq_dict();
-    // vector<uint32_t> values;
-    // for (auto& kv : cum_prob_list) {
-    //     values.push_back(kv.second);
-    // }
-
-    // uint32_t symbol_bin = find_bin(values, slot);
-    // char s = params.freqs.alphabet()[symbol_bin];
-
-    // uint32_t prev_state = block_id * params.freqs.frequency(s) + slot - params.freqs.cumulative_freq_dict()[s];
-    // state = prev_state;
-    // return s;
     uint32_t slot = state % params.M;
     const ransDecSym& ds = params.decode_table[slot];
 
@@ -230,11 +213,6 @@ string decoder::decode(uint8_t** ptr0, uint8_t** ptr1) {
 
     // merge in order
     // encoded processes in reverse, decoder does in forward
-    // For "ABCDE": A(0)->s1, B(1)->s0, C(2)->s1, D(3)->s0, E(4)->s1
-    // Decoded stream0: [B, D]
-    // Decoded stream1: [A, C, E]
-    // Reconstruct: A + B + C + D + E
-    // = stream1[0] + stream0[0] + stream1[1] + stream0[1] + stream1[2]
     string decoded_data = "";
     
     for (uint32_t i = 0; i < num_symbols_0; i++) {

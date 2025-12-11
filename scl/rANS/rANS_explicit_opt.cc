@@ -1,4 +1,4 @@
-// C++ Implementation of the rANS encoder
+// C++ Implementation of the rANS compressor, with explicit interleaving and pointer/lookup optimizations
 #include <cstdint>
 #include <vector>
 #include <algorithm>

@@ -119,7 +119,7 @@ def plot_graph(df: pandas.DataFrame, text: str, logscale=False) -> None:
 if __name__ == "__main__":
     implementations = ["rANS", "rANS_buf", "rANS_explicit", "rANS_explicit_opt", "rANS_thread", "rANS_implicit"]
     texts = ["sherlock_clean.txt", "carol_clean.txt", "shakespeare_clean.txt"]
-    # run_full_eval(implementations, texts)
+    run_full_eval(implementations, texts)
     df = collect_results(implementations, texts)
     for text in texts:
         save_results_to_csv(df, text)

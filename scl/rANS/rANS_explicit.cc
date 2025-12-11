@@ -1,4 +1,4 @@
-// C++ Implementation of the rANS encoder
+// C++ Implementation of the rANS base compressor, with explicit interleaving
 #include <cstdint>
 #include <vector>
 #include <algorithm>
@@ -15,7 +15,7 @@ using namespace std;
 // max block size: 65536
 const uint32_t BUFFER_SIZE = 1000000;
 
-encoder::encoder(rANSParams params) : params(params) {};
+encoder::encoder(rANSParams params) : params(params) {}
 
 // == rANS base encode step ==
 // take current state, new symbol s (represented as a char), updates state based on rANS algorithm
@@ -97,7 +97,7 @@ tuple<uint8_t*, uint8_t*, uint8_t*> encoder::encode(string data, size_t* len)
 }
 
 
-decoder::decoder(rANSParams params) : params(params) {};
+decoder::decoder(rANSParams params) : params(params) {}
 
 // == rANS find bin ==
 // takes a cumulative frequency list and a slot (integer), and finds which bin it lies in
@@ -281,6 +281,7 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
     dec_avg_time /= 3;
     return true;
 }
+
 Frequencies compute_frequencies_from_file(string file_path) {
     map<char, uint32_t> freq_dict;
     ifstream file(file_path);

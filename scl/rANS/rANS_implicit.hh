@@ -1,3 +1,4 @@
+// C++ header/uti file for rANS implicit interleaving implementation
 #include <string>
 #include <iostream>
 #include <tuple>
@@ -16,7 +17,7 @@ struct ransDecSym {
 };
 
 struct Frequencies {
-    Frequencies(map<char, uint32_t> freq_dict_) : freq_dict(freq_dict_) {};
+    Frequencies(map<char, uint32_t> freq_dict_) : freq_dict(freq_dict_) {}
 
     map<char, uint32_t> freq_dict;
 

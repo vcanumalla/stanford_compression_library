@@ -1,4 +1,4 @@
-// C++ Implementation of the rANS encoder
+// C++ Base Implementation of the rANS compressor
 #include <cstdint>
 #include <vector>
 #include <algorithm>
@@ -15,7 +15,7 @@ using namespace std;
 // max block size: 65536
 const uint32_t BUFFER_SIZE = 6000000;
 
-encoder::encoder(rANSParams params) : params(params) {};
+encoder::encoder(rANSParams params) : params(params) {}
 
 // == rANS base encode step ==
 // take current state, new symbol s (represented as a char), updates state based on rANS algorithm
@@ -75,7 +75,7 @@ void encoder::encode_block(char** buf, size_t len, BitArray& out_stream) {
     }
 }
 
-// NOTE: can be replaced by a function which streams in data from a file
+// == rANS encode default function ==
 BitArray encoder::encode(string data) {
     BitArray bitstream;
     char* buf = new char[BUFFER_SIZE];
@@ -95,7 +95,7 @@ BitArray encoder::encode(string data) {
 
 
 
-decoder::decoder(rANSParams params) : params(params) {};
+decoder::decoder(rANSParams params) : params(params) {}
 
 // == rANS find bin ==
 // takes a cumulative frequency list and a slot (integer), and finds which bin it lies in
@@ -245,7 +245,6 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
         uint32_t len = encoded_bitarray.size();
 
         auto enc_time = chrono::duration_cast<chrono::microseconds>(enc_stop - enc_start);
-        // cout << "Time to encode: " << enc_time.count() << "ms" << endl;
         enc_avg_time += enc_time.count();
 
         auto dec_start = chrono::high_resolution_clock::now();
@@ -253,11 +252,7 @@ bool test_rANS(uint32_t& enc_avg_time, uint32_t& dec_avg_time) {
         auto dec_stop = chrono::high_resolution_clock::now();
         
         auto dec_time = chrono::duration_cast<chrono::microseconds>(dec_stop - dec_start);
-        // cout << "Time to decode: " << dec_time.count() << "ms" << endl;
         dec_avg_time += dec_time.count();
-
-        // cout << "Input string: " << data << endl;
-        // cout << "Decoded string: " << get<0>(decoded_data) << endl;
 
         if (get<1>(decoded_data) != len) {
             printf("Did not consume correct number of bits.\n");
