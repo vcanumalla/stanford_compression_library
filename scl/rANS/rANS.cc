@@ -12,7 +12,6 @@
 #include "rANS.hh"
 using namespace std;
 
-// max block size: 65536
 const uint32_t BUFFER_SIZE = 6000000;
 
 encoder::encoder(rANSParams params) : params(params) {}

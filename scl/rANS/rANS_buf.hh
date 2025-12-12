@@ -9,7 +9,7 @@
 
 using namespace std;
 
-struct ransDecSym {
+struct decTableEntry {
     uint32_t freq;
     uint32_t cum_freq;
     char s;
@@ -75,7 +75,7 @@ struct rANSParams {
     uint32_t NUM_STATE_BITS;
     uint32_t BITS_OUT_MASK;
 
-    vector<ransDecSym> decode_table;
+    vector<decTableEntry> decode_table;
 
     rANSParams(const Frequencies &freqs_, uint32_t DATA_BLOCK_SIZE_BITS_, uint32_t RANGE_FACTOR_) : 
         freqs(freqs_), DATA_BLOCK_SIZE_BITS(DATA_BLOCK_SIZE_BITS_), RANGE_FACTOR(RANGE_FACTOR_) {
@@ -107,7 +107,7 @@ struct rANSParams {
             uint32_t f = freq.at(s);
             uint32_t cf = kv.second;
             for (uint32_t i = cf; i < cf + f; i++) {
-                ransDecSym ds;
+                decTableEntry ds;
                 ds.freq = f;
                 ds.cum_freq = cf;
                 ds.s = s;

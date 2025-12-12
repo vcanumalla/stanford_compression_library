@@ -109,7 +109,7 @@ uint32_t decoder::find_bin(vector<uint32_t> cum_freq_list, uint32_t slot) {
 // returns decoded symbol and updated (prev) state (modifies through reference)
 char decoder::base_decode_step(uint32_t& state) {
     uint32_t slot = state % params.M;
-    const ransDecSym& ds = params.decode_table[slot];
+    const decTableEntry& ds = params.decode_table[slot];
 
     char s = ds.s;
 
