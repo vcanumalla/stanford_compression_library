@@ -10,6 +10,7 @@ Results and analysis can be found in our report.
 ### Notes
 Besides run_python.py, there are no dependencies on any SCL utility. The rANS directory is essentially standalone.
 The implementations are currently limited to ASCII texts, as the corresponding symbols are one byte and can be read by our parsing functions. Source texts with multi-byte characters may be compressed, but might result in suboptimal performance. Adding this support is a future extension and requires a small amount of work to the frontend.
+The `test_rANS` function is a small unit test, which is no longer used but was initially created to verify our implementation at early stages.
 
 ### Files
 This folder contains the source files needed to run our rANS compressor on a given input text. There are five implementations:
